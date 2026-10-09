@@ -71,7 +71,7 @@ function codexFixture(): unknown[] {
 }
 
 function setup() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tokenpacer-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tokenvisillo-'));
   const claudeDir = path.join(dir, 'claude');
   const codexDir = path.join(dir, 'codex');
   const cFile = path.join(claudeDir, 'projects', '-work-app', 'c1.jsonl');

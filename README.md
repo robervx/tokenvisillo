@@ -1,9 +1,11 @@
-# TokenPacer
+# TokenVisillo
 
-Pace your tokens. A traffic-light context meter and token-saving coach for **Claude Code** and **Codex**, inside VS Code.
+The nosy neighbour behind the curtain, watching your tokens. A traffic-light context meter and token-saving coach for **Claude Code** and **Codex**, inside VS Code.
 One panel, one set of rules, whichever of the two you are using.
 
 [Español más abajo](#español)
+
+> **Why the name?** A *visillo* is a net curtain. In Spain, *la vieja del visillo* is the neighbour who peeks from behind it and knows everything that happens on the street. This one only spies on your tokens.
 
 ## What it does
 
@@ -32,8 +34,8 @@ The grade starts at 100 and loses 25 / 12 / 5 points per critical / warning / in
 
 | Tool | Location | Override |
 | --- | --- | --- |
-| Claude Code | `~/.claude/projects/<project>/<session>.jsonl` | `$CLAUDE_CONFIG_DIR` or `tokenpacer.claudeDir` |
-| Codex | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` | `$CODEX_HOME` or `tokenpacer.codexDir` |
+| Claude Code | `~/.claude/projects/<project>/<session>.jsonl` | `$CLAUDE_CONFIG_DIR` or `tokenvisillo.claudeDir` |
+| Codex | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` | `$CODEX_HOME` or `tokenvisillo.codexDir` |
 
 Files are read incrementally: only what was appended since the last check is parsed.
 
@@ -42,10 +44,10 @@ Files are read incrementally: only what was appended since the last check is par
 Not on the Marketplace yet. Build the `.vsix` and install it:
 
 ```bash
-git clone <this repo> && cd tokenpacer
+git clone <this repo> && cd tokenvisillo
 npm install
 npm run package
-code --install-extension tokenpacer-0.1.0.vsix
+code --install-extension tokenvisillo-0.1.0.vsix
 ```
 
 To hack on it, open the folder in VS Code and press `F5`.
@@ -54,18 +56,18 @@ To hack on it, open the folder in VS Code and press `F5`.
 
 | Setting | Default | |
 | --- | --- | --- |
-| `tokenpacer.language` | `auto` | `en`, `es` or follow VS Code |
-| `tokenpacer.scope` | `workspace` | Only conversations started in the open folder, or `all` |
-| `tokenpacer.warnPercent` / `criticalPercent` | 60 / 85 | Yellow and red thresholds |
-| `tokenpacer.notify` | `true` | Notification when a conversation turns red |
-| `tokenpacer.pollSeconds` | 3 | How often logs are re-read |
-| `tokenpacer.maxAgeHours` / `maxSessions` | 48 / 12 | Which conversations are listed |
-| `tokenpacer.claudeContextWindow` | 0 | 0 = auto |
-| `tokenpacer.codexContextWindow` | 0 | 0 = value logged by Codex |
+| `tokenvisillo.language` | `auto` | `en`, `es` or follow VS Code |
+| `tokenvisillo.scope` | `workspace` | Only conversations started in the open folder, or `all` |
+| `tokenvisillo.warnPercent` / `criticalPercent` | 60 / 85 | Yellow and red thresholds |
+| `tokenvisillo.notify` | `true` | Notification when a conversation turns red |
+| `tokenvisillo.pollSeconds` | 3 | How often logs are re-read |
+| `tokenvisillo.maxAgeHours` / `maxSessions` | 48 / 12 | Which conversations are listed |
+| `tokenvisillo.claudeContextWindow` | 0 | 0 = auto |
+| `tokenvisillo.codexContextWindow` | 0 | 0 = value logged by Codex |
 
 ## Known limits
 
-- **Claude Code window size is inferred.** Its log does not record the window, so TokenPacer assumes 200k and switches to 1M once a conversation exceeds 200k. Set `tokenpacer.claudeContextWindow` if you always use a 1M model. Estimated values are marked with `~`.
+- **Claude Code window size is inferred.** Its log does not record the window, so TokenVisillo assumes 200k and switches to 1M once a conversation exceeds 200k. Set `tokenvisillo.claudeContextWindow` if you always use a 1M model. Estimated values are marked with `~`.
 - **Context fill is an approximation** of what each tool shows: it is the prompt plus output of the latest request, and does not include the space each tool reserves before auto-compacting.
 - **Tool result sizes are estimated** at 4 characters per token.
 - **Compressed Codex logs (`.jsonl.zst`) are not read.**
@@ -85,7 +87,7 @@ MIT
 
 ## Español
 
-Medidor de contexto tipo semáforo y consejero de ahorro de tokens para **Claude Code** y **Codex**, dentro de VS Code. Un solo panel y las mismas reglas, uses la herramienta que uses.
+La vecina del visillo, pero de tus tokens: lo ve todo y te lo cuenta. Medidor de contexto tipo semáforo y consejero de ahorro de tokens para **Claude Code** y **Codex**, dentro de VS Code. Un solo panel y las mismas reglas, uses la herramienta que uses.
 
 ### Qué hace
 
@@ -115,15 +117,15 @@ La nota parte de 100 y pierde 25 / 12 / 5 puntos por cada consejo crítico / avi
 Todavía no está en el Marketplace:
 
 ```bash
-git clone <este repo> && cd tokenpacer
+git clone <este repo> && cd tokenvisillo
 npm install
 npm run package
-code --install-extension tokenpacer-0.1.0.vsix
+code --install-extension tokenvisillo-0.1.0.vsix
 ```
 
 ### Límites conocidos
 
-- **El tamaño de ventana de Claude Code se deduce**: 200k por defecto y 1M cuando una conversación pasa de 200k. Se puede fijar con `tokenpacer.claudeContextWindow`. Los valores estimados llevan `~`.
+- **El tamaño de ventana de Claude Code se deduce**: 200k por defecto y 1M cuando una conversación pasa de 200k. Se puede fijar con `tokenvisillo.claudeContextWindow`. Los valores estimados llevan `~`.
 - **El llenado de contexto es una aproximación** de lo que muestra cada herramienta; no incluye el margen que reservan antes de compactar.
 - **El tamaño de los resultados de herramientas se estima** a 4 caracteres por token.
 - **No se leen los registros de Codex comprimidos (`.jsonl.zst`).**
