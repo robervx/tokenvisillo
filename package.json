@@ -1,0 +1,72 @@
+{
+  "name": "tokenlight",
+  "displayName": "TokenLight",
+  "description": "Traffic-light context meter and token-saving coach for Claude Code and Codex sessions.",
+  "version": "0.1.0",
+  "publisher": "tokenlight-dev",
+  "license": "MIT",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Visualization", "Other"],
+  "keywords": ["claude code", "codex", "tokens", "context window", "usage"],
+  "main": "./out/extension.js",
+  "activationEvents": ["onStartupFinished"],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "tokenlight", "title": "TokenLight", "icon": "media/icon.svg" }
+      ]
+    },
+    "views": {
+      "tokenlight": [
+        { "type": "webview", "id": "tokenlight.sessions", "name": "Conversations" }
+      ]
+    },
+    "commands": [
+      { "command": "tokenlight.refresh", "title": "TokenLight: Refresh", "icon": "$(refresh)" },
+      { "command": "tokenlight.toggleScope", "title": "TokenLight: Toggle workspace / all conversations", "icon": "$(filter)" },
+      { "command": "tokenlight.openPanel", "title": "TokenLight: Open panel" }
+    ],
+    "menus": {
+      "view/title": [
+        { "command": "tokenlight.refresh", "when": "view == tokenlight.sessions", "group": "navigation" },
+        { "command": "tokenlight.toggleScope", "when": "view == tokenlight.sessions", "group": "navigation" }
+      ]
+    },
+    "configuration": {
+      "title": "TokenLight",
+      "properties": {
+        "tokenlight.language": {
+          "type": "string", "enum": ["auto", "en", "es"], "default": "auto",
+          "description": "Language for the panel and the advice."
+        },
+        "tokenlight.scope": {
+          "type": "string", "enum": ["workspace", "all"], "default": "workspace",
+          "description": "Show only conversations started in the open workspace, or all recent ones."
+        },
+        "tokenlight.warnPercent": { "type": "number", "default": 60, "description": "Context fill (%) at which the light turns yellow." },
+        "tokenlight.criticalPercent": { "type": "number", "default": 85, "description": "Context fill (%) at which the light turns red." },
+        "tokenlight.notify": { "type": "boolean", "default": true, "description": "Show a notification when a conversation crosses the critical threshold." },
+        "tokenlight.pollSeconds": { "type": "number", "default": 3, "minimum": 1, "description": "How often session logs are re-read." },
+        "tokenlight.maxAgeHours": { "type": "number", "default": 48, "description": "Ignore conversations not updated within this many hours." },
+        "tokenlight.maxSessions": { "type": "number", "default": 12, "description": "Maximum number of conversations shown." },
+        "tokenlight.claudeDir": { "type": "string", "default": "", "description": "Claude Code config folder. Empty = $CLAUDE_CONFIG_DIR or ~/.claude." },
+        "tokenlight.codexDir": { "type": "string", "default": "", "description": "Codex home folder. Empty = $CODEX_HOME or ~/.codex." },
+        "tokenlight.claudeContextWindow": { "type": "number", "default": 0, "description": "Claude context window in tokens. 0 = auto (200k, or 1M when a session exceeds 200k)." },
+        "tokenlight.codexContextWindow": { "type": "number", "default": 0, "description": "Codex context window in tokens. 0 = use the value Codex writes in its log." }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -w -p .",
+    "test": "npm run compile && node --test out/test/core.test.js",
+    "package": "vsce package --allow-missing-repository",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "~1.85.0",
+    "@vscode/vsce": "^3.2.0",
+    "typescript": "^5.4.0"
+  }
+}

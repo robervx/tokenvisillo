@@ -1,0 +1,73 @@
+export type Tool = 'claude' | 'codex';
+
+/** One conversation, in a shape common to both tools. */
+export interface Session {
+  tool: Tool;
+  id: string;
+  file: string;
+  cwd?: string;
+  model?: string;
+  title?: string;
+  startedAt?: number;
+  updatedAt?: number;
+
+  /** Tokens occupying the context window after the latest request. */
+  contextTokens: number;
+  peakContext: number;
+  contextWindow: number;
+  /** false when the window size is a default guess rather than a logged value. */
+  windowKnown: boolean;
+  /** Prompt size of the very first request: system prompt, tools, MCP, memory files. */
+  baselineTokens: number;
+
+  /** Cumulative usage. `input` excludes cached tokens. */
+  input: number;
+  cacheRead: number;
+  cacheWrite: number;
+  output: number;
+
+  requests: number;
+  turns: number;
+  compactions: number;
+  /** Requests where a large prompt was sent with little or no cache reuse. */
+  cacheRebuilds: number;
+  toolCalls: number;
+  bigOutputs: { name: string; tokens: number }[];
+  /** file path (Claude) or shell command (Codex) -> times read/run. */
+  repeats: Record<string, number>;
+  bigPrompts: number;
+}
+
+export function newSession(tool: Tool, file: string, id: string): Session {
+  return {
+    tool, id, file,
+    contextTokens: 0, peakContext: 0, contextWindow: 0, windowKnown: false, baselineTokens: 0,
+    input: 0, cacheRead: 0, cacheWrite: 0, output: 0,
+    requests: 0, turns: 0, compactions: 0, cacheRebuilds: 0, toolCalls: 0,
+    bigOutputs: [], repeats: {}, bigPrompts: 0,
+  };
+}
+
+/** Thresholds shared by both parsers. */
+export const BIG_OUTPUT_TOKENS = 10_000;
+export const BIG_PROMPT_CHARS = 8_000;
+export const REBUILD_MIN_PROMPT = 20_000;
+
+export const estTokens = (chars: number) => Math.round(chars / 4);
+
+export function textSize(content: unknown): number {
+  if (typeof content === 'string') return content.length;
+  if (Array.isArray(content)) return content.reduce((n: number, c) => n + textSize(c), 0);
+  if (content && typeof content === 'object') {
+    const o = content as Record<string, unknown>;
+    if (typeof o.text === 'string') return o.text.length;
+    if (o.content !== undefined) return textSize(o.content);
+    if (typeof o.output === 'string') return o.output.length;
+  }
+  return 0;
+}
+
+export function firstLine(s: string, max = 80): string {
+  const line = s.trim().split(/\r?\n/)[0] ?? '';
+  return line.length > max ? line.slice(0, max - 1) + '…' : line;
+}
