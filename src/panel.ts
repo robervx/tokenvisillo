@@ -34,6 +34,13 @@ export function panelHtml(): string {
   li::before { content: ''; position: absolute; left: 0; top: .75em; width: 7px; height: 7px; border-radius: 50%; }
   li.crit::before { background: var(--red); } li.warn::before { background: var(--yellow); } li.info::before { background: var(--vscode-charts-blue, #58a6ff); }
   .ok { opacity: .7; }
+  .kids { margin-top: 8px; font-size: .92em; }
+  .kids summary { cursor: pointer; opacity: .85; }
+  .kid { display: flex; align-items: center; gap: 6px; padding: 2px 0 2px 4px; font-variant-numeric: tabular-nums; }
+  .kid .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .kid.green .dot { background: var(--green); } .kid.yellow .dot { background: var(--yellow); } .kid.red .dot { background: var(--red); }
+  .kid .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kid .num { opacity: .75; }
 </style>
 </head>
 <body>
@@ -41,6 +48,7 @@ export function panelHtml(): string {
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
   const root = document.getElementById('root');
+  const open = new Set();
   const el = (tag, cls, text) => {
     const e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -69,7 +77,21 @@ export function panelHtml(): string {
       ctx.append(right);
       const dl = el('dl');
       for (const s of c.stats) dl.append(el('dt', '', s.label), el('dd', '', s.value));
-      card.append(head, title, bar, ctx, dl, el('h4', '', d.ui.tips));
+      card.append(head, title, bar, ctx, dl);
+      if (c.children.length) {
+        const det = el('details', 'kids');
+        det.open = open.has(c.title);
+        det.addEventListener('toggle', () => { det.open ? open.add(c.title) : open.delete(c.title); });
+        det.append(el('summary', '', c.childrenLabel));
+        for (const k of c.children) {
+          const row = el('div', 'kid ' + k.level);
+          row.append(el('span', 'dot'), el('span', 'name', k.name), el('span', 'num', k.percent + '% · ' + k.tokens));
+          row.querySelector('.name').title = k.name;
+          det.append(row);
+        }
+        card.append(det);
+      }
+      card.append(el('h4', '', d.ui.tips));
       if (c.tips.length) {
         const ul = el('ul');
         for (const t of c.tips) ul.append(el('li', t.severity, t.text));

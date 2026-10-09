@@ -48,25 +48,66 @@ function claudeFixture(): unknown[] {
   ];
 }
 
-function codexToken(min: number, total: object, last: object) {
-  return { timestamp: iso(min), type: 'event_msg', payload: { type: 'token_count', info: { total_token_usage: total, last_token_usage: last, model_context_window: 200000 }, rate_limits: null } };
+type U = { input_tokens: number; cached_input_tokens: number; output_tokens: number; total_tokens: number };
+const usage = (input: number, cached: number, output: number): U =>
+  ({ input_tokens: input, cached_input_tokens: cached, output_tokens: output, total_tokens: input + output });
+function codexToken(min: number, total: U, last: U, extra: object = {}) {
+  return { timestamp: iso(min), type: 'event_msg', payload: { type: 'token_count', info: { total_token_usage: total, last_token_usage: last, model_context_window: 200000 }, rate_limits: null, ...extra } };
 }
+const codexItem = (min: number, payload: object) => ({ timestamp: iso(min), type: 'response_item', payload });
+const codexUser = (min: number, text: string) => codexItem(min, { type: 'message', role: 'user', content: [{ type: 'input_text', text }] });
 
 function codexFixture(): unknown[] {
-  const t1 = { input_tokens: 30000, cached_input_tokens: 0, output_tokens: 1000, total_tokens: 31000 };
-  const t2 = { input_tokens: 210000, cached_input_tokens: 28000, output_tokens: 3000, total_tokens: 213000 };
-  const call = (id: string) => ({ timestamp: iso(2), type: 'response_item', payload: { type: 'function_call', name: 'shell', call_id: id, arguments: JSON.stringify({ command: ['bash', '-lc', 'cat src/big.json'] }) } });
+  const t1 = usage(30000, 0, 1000);
+  const call = (id: string) => codexItem(2, { type: 'custom_tool_call', name: 'exec', call_id: id, input: 'cat src/big.json' });
   return [
     { timestamp: iso(0), type: 'session_meta', payload: { id: 'x1', cwd: '/work/api' } },
     { timestamp: iso(0), type: 'turn_context', payload: { model: 'gpt-5-codex', cwd: '/work/api' } },
-    { timestamp: iso(0), type: 'event_msg', payload: { type: 'user_message', message: 'Fix the failing endpoint\nmore detail' } },
+    codexUser(0, '<environment_context>\nignored\n</environment_context>'),
+    codexUser(0, '# Context from my IDE setup:\n\n## Open tabs:\n- a.ts\n\n## My request:\nFix the failing endpoint\nmore detail'),
     codexToken(1, t1, t1),
     call('a'), call('b'), call('c'),
-    { timestamp: iso(2), type: 'response_item', payload: { type: 'function_call_output', call_id: 'c', output: 'y'.repeat(48_000) } },
+    codexItem(2, { type: 'custom_tool_call_output', call_id: 'c', output: 'y'.repeat(48_000) }),
+    codexItem(2, { type: 'function_call', name: 'spawn_agent', namespace: 'collaboration', call_id: 'd', arguments: '{"task_name":"review"}' }),
     codexToken(3, t1, t1), // repeat of the previous totals
-    codexToken(4, t2, { input_tokens: 180000, cached_input_tokens: 5000, output_tokens: 2000, total_tokens: 182000 }),
+    codexToken(4, usage(210000, 5000, 3000), usage(180000, 5000, 2000), {
+      rate_limits: { primary: { used_percent: 57, window_minutes: 10080 }, secondary: null },
+    }),
     { timestamp: iso(5), type: 'compacted', payload: { message: 'summary' } },
     { timestamp: iso(5), type: 'event_msg', payload: { type: 'context_compacted' } },
+  ];
+}
+
+/** A resumed conversation: the running total restarts, and no usage records are written (older Codex). */
+function codexResumedFixture(): unknown[] {
+  const a = usage(20000, 0, 500);
+  return [
+    { timestamp: iso(0), type: 'session_meta', payload: { id: 'x2', cwd: '/work/api' } },
+    { timestamp: iso(0), type: 'event_msg', payload: { type: 'user_message', message: 'first' } },
+    codexUser(0, 'first'),
+    codexToken(1, a, a),
+    codexToken(2, usage(45000, 20000, 900), usage(25000, 20000, 400)),
+    // resumed: total starts again from this request
+    codexToken(50, usage(26000, 0, 300), usage(26000, 0, 300)),
+    codexToken(51, usage(54000, 26000, 700), usage(28000, 26000, 400)),
+  ];
+}
+
+/** A forked subagent: the parent's history is replayed at the fork instant, then its own work follows. */
+function codexSubagentFixture(): unknown[] {
+  const at = (ms: number) => new Date(Date.UTC(2026, 9, 10, 8, 30, 0, ms)).toISOString();
+  const tc = (ms: number, total: U, last: U) => ({ ...codexToken(0, total, last), timestamp: at(ms) });
+  const rec = (ms: number, thread: U) => ({ timestamp: at(ms), type: 'token_usage_record', payload: { thread_id: 'sub1', usage: thread, thread_token_usage: thread } });
+  return [
+    { timestamp: at(0), type: 'session_meta', payload: { id: 'sub1', cwd: '/work/api', parent_thread_id: 'x1', forked_from_id: 'x1', source: { subagent: { thread_spawn: { parent_thread_id: 'x1', agent_path: '/root/review_lab', agent_role: 'senior_dev' } } } } },
+    { timestamp: at(1), type: 'session_meta', payload: { id: 'x1', cwd: '/elsewhere' } },
+    { ...codexUser(0, 'parent prompt'), timestamp: at(2) },
+    tc(3, usage(30000, 0, 1000), usage(30000, 0, 1000)),
+    tc(4, usage(2_000_000, 1_900_000, 9000), usage(120000, 118000, 800)),
+    rec(7000, usage(18000, 0, 100)),
+    tc(7001, usage(2_018_000, 1_900_000, 9100), usage(18000, 0, 100)),
+    rec(12000, usage(40000, 17000, 400)),
+    tc(12001, usage(2_040_000, 1_917_000, 9400), usage(22000, 17000, 300)),
   ];
 }
 
@@ -120,7 +161,7 @@ test('Claude Code session: context, totals, dedupe, compaction and advice', asyn
   assert.equal(r.grade, 'C');
 });
 
-test('Codex session: cumulative totals, repeats skipped, logged window, advice', async () => {
+test('Codex session: prompts from items, editor context stripped, limits, advice', async () => {
   const { monitor, xFile } = setup();
   fs.writeFileSync(xFile, jsonl(codexFixture()));
   const [s] = await monitor.refresh();
@@ -129,23 +170,68 @@ test('Codex session: cumulative totals, repeats skipped, logged window, advice',
   assert.equal(s.cwd, '/work/api');
   assert.equal(s.model, 'gpt-5-codex');
   assert.equal(s.title, 'Fix the failing endpoint');
+  assert.equal(s.turns, 1);
   assert.equal(s.requests, 2);
-  assert.equal(s.input, 182000);
-  assert.equal(s.cacheRead, 28000);
+  assert.equal(s.input, 205000);
+  assert.equal(s.cacheRead, 5000);
   assert.equal(s.output, 3000);
   assert.equal(s.contextTokens, 182000);
   assert.equal(s.contextWindow, 200000);
   assert.equal(s.windowKnown, true);
   assert.equal(s.compactions, 1); // logged twice, counted once
   assert.equal(s.cacheRebuilds, 1);
-  assert.equal(s.toolCalls, 3);
-  assert.deepEqual(s.bigOutputs, [{ name: 'shell', tokens: 12000 }]);
-  assert.equal(s.repeats['bash -lc cat src/big.json'], 3);
+  assert.equal(s.toolCalls, 4);
+  assert.deepEqual(s.bigOutputs, [{ name: 'exec', tokens: 12000 }]);
+  assert.deepEqual(s.repeats, { 'cat src/big.json': 3 }); // spawn_agent is not a command
+  assert.deepEqual(s.limits, [{ minutes: 10080, usedPercent: 57 }]);
 
   const r = analyze(s, T);
   assert.equal(r.level, 'red');
   assert.equal(r.advice[0].id, 'contextCritical');
   assert.ok(r.advice.some((a) => a.id === 'heavyBaseline'));
+  const [card] = buildCards([s], T, 'es');
+  assert.ok(card.stats.some((x) => x.label === 'Límite semanal' && x.value === '57% usado'));
+});
+
+test('Codex resumed conversation: restarted totals are added up, prompts not double counted', async () => {
+  const { monitor, xFile } = setup();
+  fs.writeFileSync(xFile, jsonl(codexResumedFixture()));
+  const [s] = await monitor.refresh();
+  assert.equal(s.turns, 1); // logged as event and as item
+  assert.equal(s.requests, 4);
+  assert.equal(s.input + s.cacheRead, 20000 + 25000 + 26000 + 28000);
+  assert.equal(s.cacheRead, 20000 + 26000);
+  assert.equal(s.output, 500 + 400 + 300 + 400);
+  assert.equal(s.contextTokens, 28400);
+  assert.equal(s.cacheRebuilds, 1); // the first request after resuming read nothing from cache
+});
+
+test('Codex subagent: replayed parent history is ignored and it nests under its parent', async () => {
+  const { monitor, xFile } = setup();
+  fs.writeFileSync(xFile, jsonl(codexFixture()));
+  const subFile = path.join(path.dirname(xFile), 'rollout-2026-10-10T08-30-00-sub1.jsonl');
+  fs.writeFileSync(subFile, jsonl(codexSubagentFixture()));
+  const list = await monitor.refresh();
+  assert.equal(list.length, 1);
+  const parent = list[0];
+  assert.equal(parent.id, 'x1');
+  assert.equal(parent.children!.length, 1);
+  const sub = parent.children![0];
+  assert.equal(sub.id, 'sub1'); // not overwritten by the replayed parent meta
+  assert.equal(sub.cwd, '/work/api');
+  assert.equal(sub.agent, 'review_lab (senior_dev)');
+  assert.equal(sub.turns, 0);
+  assert.equal(sub.requests, 2);
+  assert.equal(sub.input + sub.cacheRead + sub.output, 40400); // own usage, not the parent's 2M
+  assert.equal(sub.baselineTokens, 18000);
+  assert.equal(sub.contextTokens, 22300);
+  assert.equal(sub.compactions, 0);
+  assert.equal(sub.cacheRebuilds, 0);
+  assert.equal(parent.activeAt, sub.updatedAt);
+
+  const [card] = buildCards(list, T, 'en');
+  assert.equal(card.childrenLabel, 'Subagents: 1 · 40.4k tokens');
+  assert.deepEqual(card.children, [{ name: 'review_lab (senior_dev)', level: 'green', percent: 11, tokens: '40.4k' }]);
 });
 
 test('incremental tailing, partial lines and both tools in one list', async () => {

@@ -90,7 +90,8 @@ export function activate(ctx: vscode.ExtensionContext): void {
         emptyText: all.length === 0 ? ui.empty : ui.emptyScope,
       });
 
-      const active = sessions[0];
+      // An orphaned subagent log is never "the" conversation while a real one exists.
+      const active = sessions.find((s) => !s.parentId) ?? sessions[0];
       if (!active) {
         status.text = '$(circle-outline) TokenVisillo';
         status.tooltip = ui.idle;

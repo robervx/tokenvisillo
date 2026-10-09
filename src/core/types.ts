@@ -36,7 +36,19 @@ export interface Session {
   /** file path (Claude) or shell command (Codex) -> times read/run. */
   repeats: Record<string, number>;
   bigPrompts: number;
+
+  /** Set when this conversation is a subagent spawned by another one. */
+  parentId?: string;
+  agent?: string;
+  /** Account usage limits as last reported in the log (Codex only). */
+  limits?: { minutes: number; usedPercent: number }[];
+  /** Filled by the monitor: subagent conversations spawned from this one. */
+  children?: Session[];
+  /** Latest activity in this conversation or any of its subagents. */
+  activeAt?: number;
 }
+
+export const spent = (s: Session) => s.input + s.cacheRead + s.cacheWrite + s.output;
 
 export function newSession(tool: Tool, file: string, id: string): Session {
   return {
@@ -52,6 +64,8 @@ export function newSession(tool: Tool, file: string, id: string): Session {
 export const BIG_OUTPUT_TOKENS = 10_000;
 export const BIG_PROMPT_CHARS = 8_000;
 export const REBUILD_MIN_PROMPT = 20_000;
+/** A prompt this much smaller than the previous one means the context was reset, not that the cache missed. */
+export const RESET_RATIO = 0.6;
 
 export const estTokens = (chars: number) => Math.round(chars / 4);
 

@@ -76,7 +76,8 @@ export class Monitor {
       } catch { /* file vanished */ }
     }
     out.sort((a, b) => b.mtime - a.mtime);
-    return out.slice(0, this.opts.maxSessions);
+    // Subagent logs are files too, so read well past the number of conversations shown.
+    return out.slice(0, this.opts.maxSessions * 8);
   }
 
   private async tail(t: Tracked, tool: Tool, file: string, size: number): Promise<void> {
@@ -112,7 +113,7 @@ export class Monitor {
     }
   }
 
-  /** Returns recent sessions, most recently updated first. */
+  /** Returns recent conversations, most recently active first, with subagents nested under their parent. */
   async refresh(): Promise<Session[]> {
     const cands = await this.candidates();
     const keep = new Set(cands.map((c) => c.file));
@@ -139,7 +140,28 @@ export class Monitor {
       else codexWindow(s, this.opts.codexContextWindow ?? 0);
       sessions.push(s);
     }
-    sessions.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
-    return sessions;
+    return group(sessions).slice(0, this.opts.maxSessions);
   }
+}
+
+/** Nest subagent conversations under the conversation that spawned them. */
+export function group(sessions: Session[]): Session[] {
+  const byId = new Map(sessions.map((s) => [s.id, s]));
+  for (const s of sessions) {
+    s.children = [];
+    s.activeAt = s.updatedAt ?? 0;
+  }
+  const top: Session[] = [];
+  for (const s of sessions) {
+    const parent = s.parentId ? byId.get(s.parentId) : undefined;
+    if (!parent || parent === s) {
+      top.push(s);
+      continue;
+    }
+    parent.children!.push(s);
+    parent.activeAt = Math.max(parent.activeAt ?? 0, s.updatedAt ?? 0);
+  }
+  for (const s of top) s.children!.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+  top.sort((a, b) => (b.activeAt ?? 0) - (a.activeAt ?? 0));
+  return top;
 }

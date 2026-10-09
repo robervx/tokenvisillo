@@ -11,6 +11,7 @@ One panel, one set of rules, whichever of the two you are using.
 
 - **Status bar light.** Shows the active conversation's context fill and an efficiency grade (A–E). Green, yellow or red as the window fills up.
 - **One card per conversation.** Context bar, cache reuse, prompts, compactions and tokens used, for Claude Code and Codex side by side.
+- **Subagents and limits.** Subagent conversations are nested under the one that spawned them, with their own context and spend. Codex cards also show the account usage limit written in the log.
 - **Advice from your own sessions.** The same rules run on both tools and are worded with each tool's commands (`/clear` vs `/new`, `CLAUDE.md` vs `AGENTS.md`).
 - **Local and read-only.** It reads the session logs both tools already write to disk. No network requests, no credentials, no telemetry.
 
@@ -27,6 +28,7 @@ One panel, one set of rules, whichever of the two you are using.
 | Heavy start | The first request already used 30k+ tokens or 15%+ of the window |
 | Long conversation | 30+ prompts while context is yellow or red |
 | Pasted text | Prompts with 8k+ characters |
+| Subagents | 2+ subagents account for 30%+ of the conversation's tokens |
 
 The grade starts at 100 and loses 25 / 12 / 5 points per critical / warning / info item.
 
@@ -71,8 +73,18 @@ To hack on it, open the folder in VS Code and press `F5`.
 - **Context fill is an approximation** of what each tool shows: it is the prompt plus output of the latest request, and does not include the space each tool reserves before auto-compacting.
 - **Tool result sizes are estimated** at 4 characters per token.
 - **Compressed Codex logs (`.jsonl.zst`) are not read.**
-- The log formats are not a public API and can change between versions. Parsers were written against the formats in use in October 2026; if a number looks wrong, please open an issue with the tool version.
-- Tested with synthetic sessions (`npm test`). Reports from real-world use are welcome.
+- **How far each parser has been checked.** Codex: against real logs written by Codex 0.107 to 0.153 (VS Code extension and SDK), where token totals match Codex's own per-thread records exactly. Claude Code: only against synthetic logs so far.
+- **Codex compactions are partly inferred.** No real log with a compaction was available, so besides the known markers, a prompt that suddenly halves is counted as one.
+- **Claude Code subagents** are counted in the conversation's spend but not listed one by one.
+- The log formats are not a public API and can change between versions. If a number looks wrong, please open an issue with the tool version and an anonymized log (see below).
+
+## Reporting a wrong number
+
+```bash
+node tools/anonymize-log.js
+```
+
+writes a copy of your newest Claude Code and Codex logs to `./tokenvisillo-anon/` with all text replaced by `[str:LENGTH]`: prompts, answers, file contents, paths and commands are removed; structure, numbers and tool names stay. Attach those files to the issue.
 
 ## Contributing
 
@@ -93,6 +105,7 @@ La vecina del visillo, pero de tus tokens: lo ve todo y te lo cuenta. Medidor de
 
 - **Semáforo en la barra de estado.** Muestra el llenado de contexto de la conversación activa y una nota de eficiencia (A–E). Verde, amarillo o rojo según se llena la ventana.
 - **Una tarjeta por conversación.** Barra de contexto, uso de caché, prompts, compactaciones y tokens usados, con Claude Code y Codex juntos.
+- **Subagentes y límites.** Las conversaciones de subagentes aparecen dentro de la que las lanzó, con su contexto y su gasto. Las tarjetas de Codex muestran además el límite de uso de la cuenta que figura en el registro.
 - **Consejos a partir de tus propias sesiones.** Las mismas reglas se aplican a las dos herramientas, redactadas con los comandos de cada una (`/clear` o `/new`, `CLAUDE.md` o `AGENTS.md`).
 - **Local y solo lectura.** Lee los registros que ambas herramientas ya guardan en disco. Sin peticiones de red, sin credenciales, sin telemetría.
 
@@ -109,6 +122,7 @@ La vecina del visillo, pero de tus tokens: lo ve todo y te lo cuenta. Medidor de
 | Arranque pesado | La primera petición ya usó 30k tokens o el 15% de la ventana |
 | Conversación larga | 30 o más prompts con el contexto en amarillo o rojo |
 | Texto pegado | Prompts de 8k caracteres o más |
+| Subagentes | 2 o más subagentes suman el 30% o más de los tokens de la conversación |
 
 La nota parte de 100 y pierde 25 / 12 / 5 puntos por cada consejo crítico / aviso / informativo.
 
@@ -129,5 +143,11 @@ code --install-extension tokenvisillo-0.1.0.vsix
 - **El llenado de contexto es una aproximación** de lo que muestra cada herramienta; no incluye el margen que reservan antes de compactar.
 - **El tamaño de los resultados de herramientas se estima** a 4 caracteres por token.
 - **No se leen los registros de Codex comprimidos (`.jsonl.zst`).**
+- **Hasta dónde está comprobado cada lector.** Codex: con registros reales de Codex 0.107 a 0.153, donde los totales coinciden exactamente con los que Codex anota por hilo. Claude Code: de momento solo con registros sintéticos.
+- **Las compactaciones de Codex se deducen en parte**: además de los marcadores conocidos, cuenta como compactación un prompt que se reduce de golpe a la mitad.
+- **Los subagentes de Claude Code** cuentan en el gasto de la conversación, pero no se listan uno a uno.
 - Los formatos de registro no son una API pública y pueden cambiar entre versiones.
-- Probado con sesiones sintéticas (`npm test`).
+
+### Avisar de un número incorrecto
+
+`node tools/anonymize-log.js` crea en `./tokenvisillo-anon/` una copia de tus registros más recientes con todo el texto sustituido por `[str:LONGITUD]`. Se conservan la estructura, las cifras y los nombres de herramientas. Adjunta esos archivos a la incidencia.

@@ -1,5 +1,5 @@
 import {
-  Session, BIG_OUTPUT_TOKENS, BIG_PROMPT_CHARS, REBUILD_MIN_PROMPT, estTokens, textSize, firstLine,
+  Session, BIG_OUTPUT_TOKENS, BIG_PROMPT_CHARS, REBUILD_MIN_PROMPT, RESET_RATIO, estTokens, textSize, firstLine,
 } from './types';
 
 /** Parser state that does not belong in the public Session. */
@@ -109,7 +109,8 @@ export function feedClaude(s: Session, st: ClaudeState, o: any): void {
   if (msg.model) s.model = msg.model;
   const prompt = fresh + read + write;
   if (s.baselineTokens === 0) s.baselineTokens = prompt;
-  if (!st.justCompacted && st.prevPrompt >= REBUILD_MIN_PROMPT && read < st.prevPrompt * 0.5) {
+  if (!st.justCompacted && st.prevPrompt >= REBUILD_MIN_PROMPT && prompt >= st.prevPrompt * RESET_RATIO
+    && read < st.prevPrompt * 0.5) {
     s.cacheRebuilds++;
   }
   st.justCompacted = false;

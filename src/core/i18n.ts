@@ -33,6 +33,7 @@ const ADVICE: Record<Lang, Record<Advice['id'], Msg>> = {
     heavyBaseline: (p, t) => `The conversation starts at ~${fmt(Number(p.tokens))} tokens (${p.pct}% of the window) before your first message. Trim ${CMD[t].memory}, disable unused MCP servers and tools (check with ${CMD[t].inspect}).`,
     longSession: (p) => `${p.n} prompts in one conversation. Long mixed threads keep paying for old, unrelated context.`,
     bigPrompts: (p) => `${p.n} prompt(s) with large pasted text. Point to the file path instead so only the needed parts are read.`,
+    subagents: (p) => `${p.n} subagents used ${fmt(Number(p.tokens))} tokens, ${p.pct}% of this conversation's total. Each one pays for its own starting context; spawn them only for work that is really independent.`,
   },
   es: {
     contextCritical: (p, t) => `Contexto al ${p.pct}%. Pide un resumen de traspaso y continúa en una conversación nueva (${CMD[t].fresh}); ahora cada mensaje reenvía casi toda la ventana.`,
@@ -47,6 +48,7 @@ const ADVICE: Record<Lang, Record<Advice['id'], Msg>> = {
     heavyBaseline: (p, t) => `La conversación arranca con ~${fmt(Number(p.tokens))} tokens (${p.pct}% de la ventana) antes de tu primer mensaje. Recorta ${CMD[t].memory} y desactiva servidores MCP y herramientas que no uses (míralo con ${CMD[t].inspect}).`,
     longSession: (p) => `${p.n} prompts en una misma conversación. Los hilos largos y mezclados siguen pagando contexto antiguo que ya no hace falta.`,
     bigPrompts: (p) => `${p.n} prompt(s) con mucho texto pegado. Indica la ruta del archivo para que solo se lea lo necesario.`,
+    subagents: (p) => `${p.n} subagentes han gastado ${fmt(Number(p.tokens))} tokens, el ${p.pct}% del total de esta conversación. Cada uno paga su propio contexto inicial; lánzalos solo para trabajo de verdad independiente.`,
   },
 };
 
@@ -59,7 +61,8 @@ export const UI: Record<Lang, Record<string, string>> = {
     emptyScope: 'No recent conversations in this workspace. Use the filter button to show all.',
     scopeAll: 'All conversations', scopeWs: 'This workspace', untitled: '(untitled)',
     critical: 'context is {pct}% full. Consider a new conversation.', open: 'Open panel',
-    idle: 'no active conversation',
+    idle: 'no active conversation', subagents: 'Subagents', subagent: 'subagent',
+    limit5h: '5-hour limit', limitWeek: 'Weekly limit', limit: 'Usage limit', used: 'used', tokens: 'tokens',
   },
   es: {
     context: 'Contexto', cache: 'Uso de caché', score: 'Eficiencia', turns: 'Prompts', compactions: 'Compactaciones',
@@ -69,7 +72,8 @@ export const UI: Record<Lang, Record<string, string>> = {
     emptyScope: 'No hay conversaciones recientes en este espacio de trabajo. Usa el botón de filtro para verlas todas.',
     scopeAll: 'Todas las conversaciones', scopeWs: 'Este espacio de trabajo', untitled: '(sin título)',
     critical: 'contexto al {pct}%. Conviene abrir una conversación nueva.', open: 'Abrir panel',
-    idle: 'sin conversación activa',
+    idle: 'sin conversación activa', subagents: 'Subagentes', subagent: 'subagente',
+    limit5h: 'Límite de 5 h', limitWeek: 'Límite semanal', limit: 'Límite de uso', used: 'usado', tokens: 'tokens',
   },
 };
 
