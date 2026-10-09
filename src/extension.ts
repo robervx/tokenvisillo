@@ -7,7 +7,7 @@ import { adviceText, Lang, pickLang, TOOL_NAME, UI } from './core/i18n';
 import { buildCards } from './core/viewmodel';
 import { panelHtml } from './panel';
 
-const cfg = () => vscode.workspace.getConfiguration('tokenlight');
+const cfg = () => vscode.workspace.getConfiguration('tokenpacer');
 
 function monitorOptions(): MonitorOptions {
   const c = cfg();
@@ -66,7 +66,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
   const monitor = new Monitor(monitorOptions());
   const panel = new PanelProvider();
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90);
-  status.command = 'tokenlight.openPanel';
+  status.command = 'tokenpacer.openPanel';
   const notified = new Set<string>();
   let busy = false;
   let timer: NodeJS.Timeout | undefined;
@@ -92,7 +92,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
 
       const active = sessions[0];
       if (!active) {
-        status.text = '$(circle-outline) TokenLight';
+        status.text = '$(circle-outline) TokenPacer';
         status.tooltip = ui.idle;
         status.color = undefined;
         status.backgroundColor = undefined;
@@ -120,9 +120,9 @@ export function activate(ctx: vscode.ExtensionContext): void {
       if (cfg().get<boolean>('notify', true)) {
         if (r.level === 'red' && !notified.has(active.file)) {
           notified.add(active.file);
-          const msg = `TokenLight: ${TOOL_NAME[active.tool]} — ${ui.critical.replace('{pct}', String(pct))}`;
+          const msg = `TokenPacer: ${TOOL_NAME[active.tool]} — ${ui.critical.replace('{pct}', String(pct))}`;
           vscode.window.showWarningMessage(msg, ui.open).then((pick) => {
-            if (pick) vscode.commands.executeCommand('tokenlight.openPanel');
+            if (pick) vscode.commands.executeCommand('tokenpacer.openPanel');
           });
         } else if (r.level !== 'red') {
           // Re-arm after a compaction brings the conversation back down.
@@ -130,7 +130,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
         }
       }
     } catch (err) {
-      console.error('[TokenLight]', err);
+      console.error('[TokenPacer]', err);
     } finally {
       busy = false;
     }
@@ -143,16 +143,16 @@ export function activate(ctx: vscode.ExtensionContext): void {
 
   ctx.subscriptions.push(
     status,
-    vscode.window.registerWebviewViewProvider('tokenlight.sessions', panel),
-    vscode.commands.registerCommand('tokenlight.refresh', update),
-    vscode.commands.registerCommand('tokenlight.openPanel', () =>
-      vscode.commands.executeCommand('tokenlight.sessions.focus')),
-    vscode.commands.registerCommand('tokenlight.toggleScope', async () => {
+    vscode.window.registerWebviewViewProvider('tokenpacer.sessions', panel),
+    vscode.commands.registerCommand('tokenpacer.refresh', update),
+    vscode.commands.registerCommand('tokenpacer.openPanel', () =>
+      vscode.commands.executeCommand('tokenpacer.sessions.focus')),
+    vscode.commands.registerCommand('tokenpacer.toggleScope', async () => {
       const next = cfg().get<string>('scope', 'workspace') === 'all' ? 'workspace' : 'all';
       await cfg().update('scope', next, vscode.ConfigurationTarget.Global);
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (!e.affectsConfiguration('tokenlight')) return;
+      if (!e.affectsConfiguration('tokenpacer')) return;
       monitor.setOptions(monitorOptions());
       schedule();
       update();

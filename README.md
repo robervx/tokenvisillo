@@ -1,6 +1,6 @@
-# TokenLight
+# TokenPacer
 
-A traffic-light context meter and token-saving coach for **Claude Code** and **Codex**, inside VS Code.
+Pace your tokens. A traffic-light context meter and token-saving coach for **Claude Code** and **Codex**, inside VS Code.
 One panel, one set of rules, whichever of the two you are using.
 
 [Español más abajo](#español)
@@ -32,8 +32,8 @@ The grade starts at 100 and loses 25 / 12 / 5 points per critical / warning / in
 
 | Tool | Location | Override |
 | --- | --- | --- |
-| Claude Code | `~/.claude/projects/<project>/<session>.jsonl` | `$CLAUDE_CONFIG_DIR` or `tokenlight.claudeDir` |
-| Codex | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` | `$CODEX_HOME` or `tokenlight.codexDir` |
+| Claude Code | `~/.claude/projects/<project>/<session>.jsonl` | `$CLAUDE_CONFIG_DIR` or `tokenpacer.claudeDir` |
+| Codex | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` | `$CODEX_HOME` or `tokenpacer.codexDir` |
 
 Files are read incrementally: only what was appended since the last check is parsed.
 
@@ -42,10 +42,10 @@ Files are read incrementally: only what was appended since the last check is par
 Not on the Marketplace yet. Build the `.vsix` and install it:
 
 ```bash
-git clone <this repo> && cd tokenlight
+git clone <this repo> && cd tokenpacer
 npm install
 npm run package
-code --install-extension tokenlight-0.1.0.vsix
+code --install-extension tokenpacer-0.1.0.vsix
 ```
 
 To hack on it, open the folder in VS Code and press `F5`.
@@ -54,18 +54,18 @@ To hack on it, open the folder in VS Code and press `F5`.
 
 | Setting | Default | |
 | --- | --- | --- |
-| `tokenlight.language` | `auto` | `en`, `es` or follow VS Code |
-| `tokenlight.scope` | `workspace` | Only conversations started in the open folder, or `all` |
-| `tokenlight.warnPercent` / `criticalPercent` | 60 / 85 | Yellow and red thresholds |
-| `tokenlight.notify` | `true` | Notification when a conversation turns red |
-| `tokenlight.pollSeconds` | 3 | How often logs are re-read |
-| `tokenlight.maxAgeHours` / `maxSessions` | 48 / 12 | Which conversations are listed |
-| `tokenlight.claudeContextWindow` | 0 | 0 = auto |
-| `tokenlight.codexContextWindow` | 0 | 0 = value logged by Codex |
+| `tokenpacer.language` | `auto` | `en`, `es` or follow VS Code |
+| `tokenpacer.scope` | `workspace` | Only conversations started in the open folder, or `all` |
+| `tokenpacer.warnPercent` / `criticalPercent` | 60 / 85 | Yellow and red thresholds |
+| `tokenpacer.notify` | `true` | Notification when a conversation turns red |
+| `tokenpacer.pollSeconds` | 3 | How often logs are re-read |
+| `tokenpacer.maxAgeHours` / `maxSessions` | 48 / 12 | Which conversations are listed |
+| `tokenpacer.claudeContextWindow` | 0 | 0 = auto |
+| `tokenpacer.codexContextWindow` | 0 | 0 = value logged by Codex |
 
 ## Known limits
 
-- **Claude Code window size is inferred.** Its log does not record the window, so TokenLight assumes 200k and switches to 1M once a conversation exceeds 200k. Set `tokenlight.claudeContextWindow` if you always use a 1M model. Estimated values are marked with `~`.
+- **Claude Code window size is inferred.** Its log does not record the window, so TokenPacer assumes 200k and switches to 1M once a conversation exceeds 200k. Set `tokenpacer.claudeContextWindow` if you always use a 1M model. Estimated values are marked with `~`.
 - **Context fill is an approximation** of what each tool shows: it is the prompt plus output of the latest request, and does not include the space each tool reserves before auto-compacting.
 - **Tool result sizes are estimated** at 4 characters per token.
 - **Compressed Codex logs (`.jsonl.zst`) are not read.**
@@ -115,15 +115,15 @@ La nota parte de 100 y pierde 25 / 12 / 5 puntos por cada consejo crítico / avi
 Todavía no está en el Marketplace:
 
 ```bash
-git clone <este repo> && cd tokenlight
+git clone <este repo> && cd tokenpacer
 npm install
 npm run package
-code --install-extension tokenlight-0.1.0.vsix
+code --install-extension tokenpacer-0.1.0.vsix
 ```
 
 ### Límites conocidos
 
-- **El tamaño de ventana de Claude Code se deduce**: 200k por defecto y 1M cuando una conversación pasa de 200k. Se puede fijar con `tokenlight.claudeContextWindow`. Los valores estimados llevan `~`.
+- **El tamaño de ventana de Claude Code se deduce**: 200k por defecto y 1M cuando una conversación pasa de 200k. Se puede fijar con `tokenpacer.claudeContextWindow`. Los valores estimados llevan `~`.
 - **El llenado de contexto es una aproximación** de lo que muestra cada herramienta; no incluye el margen que reservan antes de compactar.
 - **El tamaño de los resultados de herramientas se estima** a 4 caracteres por token.
 - **No se leen los registros de Codex comprimidos (`.jsonl.zst`).**
