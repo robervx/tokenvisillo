@@ -24,12 +24,14 @@
     "commands": [
       { "command": "tokenvisillo.refresh", "title": "TokenVisillo: Refresh", "icon": "$(refresh)" },
       { "command": "tokenvisillo.toggleScope", "title": "TokenVisillo: Toggle workspace / all conversations", "icon": "$(filter)" },
-      { "command": "tokenvisillo.openPanel", "title": "TokenVisillo: Open panel" }
+      { "command": "tokenvisillo.openPanel", "title": "TokenVisillo: Open panel" },
+      { "command": "tokenvisillo.exportAnonymized", "title": "TokenVisillo: Export anonymized logs (for bug reports)", "icon": "$(export)" }
     ],
     "menus": {
       "view/title": [
         { "command": "tokenvisillo.refresh", "when": "view == tokenvisillo.sessions", "group": "navigation" },
-        { "command": "tokenvisillo.toggleScope", "when": "view == tokenvisillo.sessions", "group": "navigation" }
+        { "command": "tokenvisillo.toggleScope", "when": "view == tokenvisillo.sessions", "group": "navigation" },
+        { "command": "tokenvisillo.exportAnonymized", "when": "view == tokenvisillo.sessions", "group": "navigation" }
       ]
     },
     "configuration": {

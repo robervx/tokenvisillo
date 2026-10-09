@@ -1,6 +1,6 @@
 import { Session, spent } from './types';
-import { analyze, Report, Thresholds } from './advisor';
-import { adviceText, fmt, Lang, TOOL_NAME, UI } from './i18n';
+import { analyze, habits, Report, Thresholds } from './advisor';
+import { adviceText, fmt, habitText, Lang, TOOL_NAME, UI } from './i18n';
 
 /** Everything the panel shows for one conversation, already localized. */
 export interface Card {
@@ -62,4 +62,9 @@ export function toCard(s: Session, r: Report, t: Thresholds, lang: Lang): Card {
 
 export function buildCards(sessions: Session[], t: Thresholds, lang: Lang): Card[] {
   return sessions.map((s) => toCard(s, analyze(s, t), t, lang));
+}
+
+/** Recurring patterns across the listed conversations, already localized. */
+export function buildHabits(sessions: Session[], t: Thresholds, lang: Lang): string[] {
+  return habits(sessions, t).map((h) => habitText(h, lang));
 }

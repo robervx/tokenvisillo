@@ -32,7 +32,12 @@ export interface Session {
   /** Requests where a large prompt was sent with little or no cache reuse. */
   cacheRebuilds: number;
   toolCalls: number;
-  bigOutputs: { name: string; tokens: number }[];
+  /** `what` is the command or file that produced the output, when known. */
+  bigOutputs: { name: string; tokens: number; what?: string }[];
+  /** One entry per cache rebuild: minutes idle before it and tokens re-read at full price. */
+  rebuilds: { gapMin: number; tokens: number }[];
+  /** Prompt size of the latest requests, oldest first, to estimate how fast the context grows. */
+  recentPrompts: number[];
   /** file path (Claude) or shell command (Codex) -> times read/run. */
   repeats: Record<string, number>;
   bigPrompts: number;
@@ -40,6 +45,8 @@ export interface Session {
   /** Set when this conversation is a subagent spawned by another one. */
   parentId?: string;
   agent?: string;
+  /** A subagent the tool starts by itself (Codex's automatic reviewer), not one the user's agent spawned. */
+  auto?: boolean;
   /** Account usage limits as last reported in the log (Codex only). */
   limits?: { minutes: number; usedPercent: number }[];
   /** Filled by the monitor: subagent conversations spawned from this one. */
@@ -56,7 +63,7 @@ export function newSession(tool: Tool, file: string, id: string): Session {
     contextTokens: 0, peakContext: 0, contextWindow: 0, windowKnown: false, baselineTokens: 0,
     input: 0, cacheRead: 0, cacheWrite: 0, output: 0,
     requests: 0, turns: 0, compactions: 0, cacheRebuilds: 0, toolCalls: 0,
-    bigOutputs: [], repeats: {}, bigPrompts: 0,
+    bigOutputs: [], rebuilds: [], recentPrompts: [], repeats: {}, bigPrompts: 0,
   };
 }
 
@@ -66,6 +73,16 @@ export const BIG_PROMPT_CHARS = 8_000;
 export const REBUILD_MIN_PROMPT = 20_000;
 /** A prompt this much smaller than the previous one means the context was reset, not that the cache missed. */
 export const RESET_RATIO = 0.6;
+
+/** Record one request's prompt size and, when the cache missed, what the miss cost. */
+export function trackRequest(s: Session, prompt: number, cached: number, rebuilt: boolean, gapMs: number): void {
+  if (rebuilt) {
+    s.cacheRebuilds++;
+    s.rebuilds.push({ gapMin: Math.max(0, Math.round(gapMs / 60000)), tokens: Math.max(0, prompt - cached) });
+  }
+  s.recentPrompts.push(prompt);
+  if (s.recentPrompts.length > 12) s.recentPrompts.shift();
+}
 
 export const estTokens = (chars: number) => Math.round(chars / 4);
 

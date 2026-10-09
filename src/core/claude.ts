@@ -1,5 +1,5 @@
 import {
-  Session, BIG_OUTPUT_TOKENS, BIG_PROMPT_CHARS, REBUILD_MIN_PROMPT, RESET_RATIO, estTokens, textSize, firstLine,
+  Session, BIG_OUTPUT_TOKENS, BIG_PROMPT_CHARS, REBUILD_MIN_PROMPT, RESET_RATIO, estTokens, textSize, firstLine, trackRequest,
 } from './types';
 
 /** Parser state that does not belong in the public Session. */
@@ -8,11 +8,18 @@ export interface ClaudeState {
   prevPrompt: number;
   justCompacted: boolean;
   sawBoundary: boolean;
-  toolNames: Map<string, string>;
+  prevTs?: number;
+  tools: Map<string, { name: string; what?: string }>;
+}
+
+/** The argument that best identifies a tool call: the file, command or pattern. */
+function target(input: any): string | undefined {
+  const v = input?.file_path ?? input?.command ?? input?.pattern ?? input?.path ?? input?.url ?? input?.query;
+  return typeof v === 'string' && v.trim() ? firstLine(v, 70) : undefined;
 }
 
 export const newClaudeState = (): ClaudeState => ({
-  prevPrompt: 0, justCompacted: false, sawBoundary: false, toolNames: new Map(),
+  prevPrompt: 0, justCompacted: false, sawBoundary: false, tools: new Map(),
 });
 
 /**
@@ -59,7 +66,8 @@ export function feedClaude(s: Session, st: ClaudeState, o: any): void {
         if (b?.type === 'tool_result') {
           const tokens = estTokens(textSize(b.content));
           if (tokens >= BIG_OUTPUT_TOKENS && !o.isSidechain) {
-            s.bigOutputs.push({ name: st.toolNames.get(b.tool_use_id) ?? 'tool', tokens });
+            const t = st.tools.get(b.tool_use_id);
+            s.bigOutputs.push({ name: t?.name ?? 'tool', tokens, what: t?.what });
           }
         } else if (b?.type === 'text' && typeof b.text === 'string') {
           promptChars += b.text.length;
@@ -81,7 +89,7 @@ export function feedClaude(s: Session, st: ClaudeState, o: any): void {
     for (const b of msg.content) {
       if (b?.type !== 'tool_use') continue;
       s.toolCalls++;
-      if (b.id) st.toolNames.set(b.id, b.name ?? 'tool');
+      if (b.id) st.tools.set(b.id, { name: b.name ?? 'tool', what: target(b.input) });
       const p = b.name === 'Read' ? b.input?.file_path : undefined;
       if (typeof p === 'string' && !o.isSidechain) s.repeats[p] = (s.repeats[p] ?? 0) + 1;
     }
@@ -109,10 +117,10 @@ export function feedClaude(s: Session, st: ClaudeState, o: any): void {
   if (msg.model) s.model = msg.model;
   const prompt = fresh + read + write;
   if (s.baselineTokens === 0) s.baselineTokens = prompt;
-  if (!st.justCompacted && st.prevPrompt >= REBUILD_MIN_PROMPT && prompt >= st.prevPrompt * RESET_RATIO
-    && read < st.prevPrompt * 0.5) {
-    s.cacheRebuilds++;
-  }
+  const rebuilt = !st.justCompacted && st.prevPrompt >= REBUILD_MIN_PROMPT
+    && prompt >= st.prevPrompt * RESET_RATIO && read < st.prevPrompt * 0.5;
+  trackRequest(s, prompt, read, rebuilt, st.prevTs && !Number.isNaN(ts) ? ts - st.prevTs : 0);
+  if (!Number.isNaN(ts)) st.prevTs = ts;
   st.justCompacted = false;
   st.prevPrompt = prompt;
   s.contextTokens = prompt + out;

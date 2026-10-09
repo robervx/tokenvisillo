@@ -5,7 +5,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { Monitor } from '../core/monitor';
 import { analyze } from '../core/advisor';
-import { buildCards } from '../core/viewmodel';
+import { buildCards, buildHabits } from '../core/viewmodel';
+import { scrubLog } from '../core/anonymize';
 
 const T = { warnPercent: 60, criticalPercent: 85 };
 const iso = (min: number) => new Date(Date.UTC(2026, 9, 10, 8, min)).toISOString();
@@ -59,7 +60,9 @@ const codexUser = (min: number, text: string) => codexItem(min, { type: 'message
 
 function codexFixture(): unknown[] {
   const t1 = usage(30000, 0, 1000);
-  const call = (id: string) => codexItem(2, { type: 'custom_tool_call', name: 'exec', call_id: id, input: 'cat src/big.json' });
+  // Newer Codex wraps commands in a short script; older versions pass the command itself.
+  const call = (id: string) => codexItem(2, { type: 'custom_tool_call', name: 'exec', call_id: id,
+    input: id === 'a' ? 'cat src/big.json' : `const r = await tools.exec_command({ cmd: "cat src/big.json", ${id}: 1 });\ntext(r);` });
   return [
     { timestamp: iso(0), type: 'session_meta', payload: { id: 'x1', cwd: '/work/api' } },
     { timestamp: iso(0), type: 'turn_context', payload: { model: 'gpt-5-codex', cwd: '/work/api' } },
@@ -148,7 +151,8 @@ test('Claude Code session: context, totals, dedupe, compaction and advice', asyn
   assert.equal(s.compactions, 1);
   assert.equal(s.cacheRebuilds, 1); // m4 only; m5 follows a compaction
   assert.equal(s.toolCalls, 4);
-  assert.deepEqual(s.bigOutputs, [{ name: 'Bash', tokens: 15000 }]);
+  assert.deepEqual(s.bigOutputs, [{ name: 'Bash', tokens: 15000, what: 'cat log' }]);
+  assert.deepEqual(s.rebuilds, [{ gapMin: 88, tokens: 58100 }]);
   assert.equal(s.repeats['/work/app/auth.ts'], 3);
 
   const r = analyze(s, T);
@@ -181,7 +185,7 @@ test('Codex session: prompts from items, editor context stripped, limits, advice
   assert.equal(s.compactions, 1); // logged twice, counted once
   assert.equal(s.cacheRebuilds, 1);
   assert.equal(s.toolCalls, 4);
-  assert.deepEqual(s.bigOutputs, [{ name: 'exec', tokens: 12000 }]);
+  assert.deepEqual(s.bigOutputs, [{ name: 'exec', tokens: 12000, what: 'cat src/big.json' }]);
   assert.deepEqual(s.repeats, { 'cat src/big.json': 3 }); // spawn_agent is not a command
   assert.deepEqual(s.limits, [{ minutes: 10080, usedPercent: 57 }]);
 
@@ -281,4 +285,63 @@ test('1M window is inferred, garbage lines are skipped, cards localize per tool'
   const claudeEs = es.find((x) => x.toolId === 'claude')!;
   assert.ok(claudeEs.tips.some((t) => t.text.includes('CLAUDE.md')));
   assert.equal(claudeEs.estimated, true);
+});
+
+test('advice carries evidence from the conversation, and habits span conversations', async () => {
+  const { monitor, cFile, xFile } = setup();
+  fs.writeFileSync(cFile, jsonl(claudeFixture()));
+  fs.writeFileSync(xFile, jsonl(codexFixture()));
+  const x2 = path.join(path.dirname(xFile), 'rollout-2026-10-10T09-00-00-x2.jsonl');
+  // A second Codex conversation that also overflowed and also got a huge tool result.
+  fs.writeFileSync(x2, jsonl(codexFixture()).replace(/"x1"/g, '"x9"'));
+  const list = await monitor.refresh();
+  assert.equal(list.length, 3);
+
+  const es = buildCards(list, T, 'es');
+  const codex = es.find((c) => c.toolId === 'codex')!;
+  const big = codex.tips.find((t) => t.text.includes('10k tokens'))!;
+  assert.match(big.text, /El mayor fue exec sobre "cat src\/big\.json" \(~12\.0k\)/);
+  const claude = es.find((c) => c.toolId === 'claude')!;
+  assert.ok(claude.tips.some((t) => /El mayor fue Bash sobre "cat log"/.test(t.text)));
+
+  const patterns = buildHabits(list, T, 'es');
+  assert.ok(patterns.length >= 2 && patterns.length <= 3);
+  assert.ok(patterns.some((p) => /contexto llegue a rojo en 2 de tus últimas 3 conversaciones, siempre en Codex/.test(p)));
+  assert.ok(patterns.some((p) => /Resultados de herramienta enormes en 3 de tus últimas 3 conversaciones \(~39\.0k tokens\).*CLAUDE\.md \/ AGENTS\.md/.test(p)));
+  assert.deepEqual(buildHabits(list.slice(0, 1), T, 'es'), []); // one conversation is not a pattern
+});
+
+test('cache-loss advice tells a pause apart from a mid-conversation change', () => {
+  const base = { ...require('../core/types').newSession('codex', 'f', 'i'), contextWindow: 200000, contextTokens: 50000 };
+  const paused = analyze({ ...base, rebuilds: [{ gapMin: 1260, tokens: 185000 }, { gapMin: 40, tokens: 60000 }] }, T);
+  const changed = analyze({ ...base, rebuilds: [{ gapMin: 0, tokens: 50000 }, { gapMin: 1, tokens: 70000 }] }, T);
+  const text = (r: typeof paused, lang: 'es' | 'en') => buildCardsFor(r, lang);
+  function buildCardsFor(r: typeof paused, lang: 'es' | 'en') {
+    const { adviceText } = require('../core/i18n');
+    return adviceText(r.advice.find((a) => a.id === 'cacheRebuilds')!, 'codex', lang) as string;
+  }
+  assert.match(text(paused, 'es'), /se perdió 2 veces: ~245k tokens.*Todas fueron tras una pausa \(la más cara, después de 21 h/);
+  assert.match(text(changed, 'es'), /Ninguna fue tras una pausa.*modelo, nivel de razonamiento/);
+  assert.match(text(paused, 'en'), /All followed a pause \(the costliest after 21 h idle\)/);
+});
+
+test('context advice projects how many requests are left', () => {
+  const s = { ...require('../core/types').newSession('claude', 'f', 'i'), contextWindow: 200000, contextTokens: 180000,
+    recentPrompts: [150000, 156000, 161000, 170000, 178000] };
+  const r = analyze(s, T);
+  assert.deepEqual(r.advice[0].p, { pct: 90, growth: 7000, left: 2 });
+  const { adviceText } = require('../core/i18n');
+  assert.match(adviceText(r.advice[0], 'claude', 'es'), /Contexto al 90%: al ritmo actual \(\+7\.0k por petición\) quedan unas 2 peticiones.*\/clear/);
+});
+
+test('anonymized logs keep structure and numbers but no text', () => {
+  const raw = jsonl(claudeFixture()) + jsonl(codexFixture());
+  const anon = scrubLog(raw);
+  assert.equal(anon.split('\n').length, raw.split('\n').length);
+  for (const secret of ['Refactor the auth module', '/work/app', 'cat log', 'Fix the failing endpoint', 'cat src/big.json']) {
+    assert.ok(raw.includes(secret) && !anon.includes(secret), secret);
+  }
+  for (const kept of ['"input_tokens":2000', '"name":"Read"', '"name":"exec"', '"type":"token_count"', 'claude-sonnet-5-5']) {
+    assert.ok(anon.includes(kept), kept);
+  }
 });

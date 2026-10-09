@@ -34,6 +34,8 @@ export function panelHtml(): string {
   li::before { content: ''; position: absolute; left: 0; top: .75em; width: 7px; height: 7px; border-radius: 50%; }
   li.crit::before { background: var(--red); } li.warn::before { background: var(--yellow); } li.info::before { background: var(--vscode-charts-blue, #58a6ff); }
   .ok { opacity: .7; }
+  .habits { border: 1px solid var(--vscode-widget-border, rgba(128,128,128,.3)); border-radius: 4px; padding: 2px 10px 8px; margin-bottom: 10px; }
+  .habits li::before { background: var(--vscode-foreground); opacity: .55; }
   .kids { margin-top: 8px; font-size: .92em; }
   .kids summary { cursor: pointer; opacity: .85; }
   .kid { display: flex; align-items: center; gap: 6px; padding: 2px 0 2px 4px; font-variant-numeric: tabular-nums; }
@@ -59,6 +61,13 @@ export function panelHtml(): string {
     root.replaceChildren();
     root.append(el('div', 'scope', d.scopeLabel));
     if (!d.cards.length) { root.append(el('div', 'empty', d.emptyText)); return; }
+    if (d.habits && d.habits.length) {
+      const box = el('div', 'habits');
+      const ul = el('ul');
+      for (const h of d.habits) ul.append(el('li', '', h));
+      box.append(el('h4', '', d.ui.habits), ul);
+      root.append(box);
+    }
     for (const c of d.cards) {
       const card = el('div', 'card ' + c.level);
       const head = el('div', 'head');

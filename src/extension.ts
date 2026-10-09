@@ -1,10 +1,13 @@
+import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { Monitor, MonitorOptions } from './core/monitor';
 import { Session } from './core/types';
 import { analyze, Thresholds } from './core/advisor';
 import { adviceText, Lang, pickLang, TOOL_NAME, UI } from './core/i18n';
-import { buildCards } from './core/viewmodel';
+import { buildCards, buildHabits } from './core/viewmodel';
+import { exportAnonymized } from './core/anonymize';
 import { panelHtml } from './panel';
 
 const cfg = () => vscode.workspace.getConfiguration('tokenvisillo');
@@ -85,6 +88,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
       panel.post({
         type: 'update',
         cards: buildCards(sessions, t, lang),
+        habits: buildHabits(sessions, t, lang),
         ui,
         scopeLabel: scope === 'all' ? ui.scopeAll : ui.scopeWs,
         emptyText: all.length === 0 ? ui.empty : ui.emptyScope,
@@ -148,6 +152,24 @@ export function activate(ctx: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('tokenvisillo.refresh', update),
     vscode.commands.registerCommand('tokenvisillo.openPanel', () =>
       vscode.commands.executeCommand('tokenvisillo.sessions.focus')),
+    vscode.commands.registerCommand('tokenvisillo.exportAnonymized', async () => {
+      const ui = UI[pickLang(cfg().get<string>('language', 'auto'), vscode.env.language)];
+      const desktop = path.join(os.homedir(), 'Desktop');
+      const picked = await vscode.window.showOpenDialog({
+        canSelectFolders: true, canSelectFiles: false, canSelectMany: false, openLabel: ui.exportPick,
+        defaultUri: vscode.Uri.file(fs.existsSync(desktop) ? desktop : os.homedir()),
+      });
+      if (!picked?.length) return;
+      const dir = path.join(picked[0].fsPath, 'tokenvisillo-anon');
+      try {
+        const o = monitorOptions();
+        const files = exportAnonymized(dir, { claudeDir: o.claudeDir, codexDir: o.codexDir });
+        if (!files.length) vscode.window.showInformationMessage('TokenVisillo: ' + ui.exportNone);
+        else vscode.window.showInformationMessage('TokenVisillo: ' + ui.exportDone.replace('{dir}', dir).replace('{n}', String(files.length)));
+      } catch (err) {
+        vscode.window.showErrorMessage('TokenVisillo: ' + String(err));
+      }
+    }),
     vscode.commands.registerCommand('tokenvisillo.toggleScope', async () => {
       const next = cfg().get<string>('scope', 'workspace') === 'all' ? 'workspace' : 'all';
       await cfg().update('scope', next, vscode.ConfigurationTarget.Global);

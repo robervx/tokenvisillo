@@ -1,5 +1,5 @@
 import {
-  Session, BIG_OUTPUT_TOKENS, BIG_PROMPT_CHARS, REBUILD_MIN_PROMPT, RESET_RATIO, estTokens, textSize, firstLine,
+  Session, BIG_OUTPUT_TOKENS, BIG_PROMPT_CHARS, REBUILD_MIN_PROMPT, RESET_RATIO, estTokens, textSize, firstLine, trackRequest,
 } from './types';
 
 type Usage = Record<string, number | undefined>;
@@ -22,14 +22,15 @@ export interface CodexState {
   eventTitle?: string;
   itemTurns: number;
   itemTitle?: string;
-  toolNames: Map<string, string>;
+  prevTs?: number;
+  tools: Map<string, { name: string; what?: string }>;
 }
 
 export const newCodexState = (): CodexState => ({
   metaSeen: false, forked: false, replayDone: false, hasRecords: false, records: 0, lastTotal: -1,
   acc: { input: 0, cached: 0, write: 0, output: 0 },
   prevPrompt: 0, justCompacted: false, compactCounted: false,
-  eventTurns: 0, itemTurns: 0, toolNames: new Map(),
+  eventTurns: 0, itemTurns: 0, tools: new Map(),
 });
 
 export const CODEX_FALLBACK_WINDOW = 258_400;
@@ -55,6 +56,17 @@ function commandKey(raw: unknown): string | undefined {
   const c = a?.command ?? a?.cmd;
   if (Array.isArray(c)) return c.join(' ');
   return typeof c === 'string' ? c : undefined;
+}
+
+/**
+ * Recent Codex versions run commands through an `exec` tool whose input is a short script:
+ * `tools.exec_command({ cmd: "rg -n foo" })`. The commands inside are what the user recognizes.
+ */
+const INNER_CMD = /\bcmd\s*:\s*(["'`])((?:\\.|(?!\1)[^\\])*)\1/g;
+export function innerCommands(script: string): string[] {
+  const out: string[] = [];
+  for (const m of script.matchAll(INNER_CMD)) if (m[2].trim()) out.push(m[2]);
+  return out;
 }
 
 const n = (v: number | undefined) => v ?? 0;
@@ -92,6 +104,7 @@ function meta(s: Session, st: CodexState, m: any): void {
   const spawn = sub?.thread_spawn;
   const name = typeof spawn?.agent_path === 'string' ? spawn.agent_path.split('/').pop() : sub?.other;
   const role = spawn?.agent_role ?? m.agent_role;
+  if (sub?.other) s.auto = true;
   if (name || role) s.agent = [name, role && `(${role})`].filter(Boolean).join(' ');
 }
 
@@ -179,8 +192,10 @@ export function feedCodex(s: Session, st: CodexState, o: any): void {
     const shrank = prompt < st.prevPrompt * RESET_RATIO;
     // No compaction marker seen but the prompt halved: the context was reset.
     if (!st.justCompacted && st.prevPrompt >= 2 * REBUILD_MIN_PROMPT && prompt < st.prevPrompt * 0.5) s.compactions++;
-    else if (!st.justCompacted && !shrank && st.prevPrompt >= REBUILD_MIN_PROMPT
-      && n(last.cached_input_tokens) < st.prevPrompt * 0.5) s.cacheRebuilds++;
+    const cached = n(last.cached_input_tokens);
+    const rebuilt = !st.justCompacted && !shrank && st.prevPrompt >= REBUILD_MIN_PROMPT && cached < st.prevPrompt * 0.5;
+    trackRequest(s, prompt, cached, rebuilt, st.prevTs && !Number.isNaN(ts) ? ts - st.prevTs : 0);
+    if (!Number.isNaN(ts)) st.prevTs = ts;
     st.justCompacted = false;
     st.prevPrompt = prompt;
     s.contextTokens = prompt + n(last.output_tokens);
@@ -226,16 +241,21 @@ export function feedCodex(s: Session, st: CodexState, o: any): void {
     case 'local_shell_call': {
       s.toolCalls++;
       const name = p.name ?? p.type;
-      if (p.call_id) st.toolNames.set(p.call_id, name);
       const key = commandKey(p.arguments ?? p.input ?? p.action);
-      if (key && key.length <= 2000 && /exec|shell/.test(name)) s.repeats[key] = (s.repeats[key] ?? 0) + 1;
+      const inner = key ? innerCommands(key) : [];
+      const keys = inner.length ? inner : key && !key.includes('\n') ? [key] : [];
+      if (p.call_id) st.tools.set(p.call_id, { name, what: keys[0] ? firstLine(keys[0], 70) : undefined });
+      if (/exec|shell/.test(name)) {
+        for (const k of keys) if (k.length <= 2000) s.repeats[k] = (s.repeats[k] ?? 0) + 1;
+      }
       break;
     }
     case 'function_call_output':
     case 'custom_tool_call_output': {
       const tokens = estTokens(textSize(p.output));
       if (tokens >= BIG_OUTPUT_TOKENS) {
-        s.bigOutputs.push({ name: st.toolNames.get(p.call_id) ?? 'tool', tokens });
+        const t = st.tools.get(p.call_id);
+        s.bigOutputs.push({ name: t?.name ?? 'tool', tokens, what: t?.what });
       }
       break;
     }
