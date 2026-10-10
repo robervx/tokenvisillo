@@ -4,7 +4,13 @@ import {
 
 /** Parser state that does not belong in the public Session. */
 export interface ClaudeState {
-  lastMsgId?: string;
+  /** API responses already counted: one response is written as several lines, and resumes copy lines. */
+  seen: Set<string>;
+  /** Responses the parent conversation already counted (older versions log subagent turns in both files). */
+  parentSeen?: Set<string>;
+  /** True for a file under <session>/subagents/: its lines are that agent's own context. */
+  sub: boolean;
+  customTitle: boolean;
   prevPrompt: number;
   justCompacted: boolean;
   sawBoundary: boolean;
@@ -18,7 +24,8 @@ function target(input: any): string | undefined {
   return typeof v === 'string' && v.trim() ? firstLine(v, 70) : undefined;
 }
 
-export const newClaudeState = (): ClaudeState => ({
+export const newClaudeState = (sub = false): ClaudeState => ({
+  seen: new Set(), sub, customTitle: false,
   prevPrompt: 0, justCompacted: false, sawBoundary: false, tools: new Map(),
 });
 
@@ -35,9 +42,21 @@ export function feedClaude(s: Session, st: ClaudeState, o: any): void {
     s.updatedAt = ts;
   }
   if (o.cwd && !s.cwd) s.cwd = o.cwd;
-  if (o.sessionId) s.id = o.sessionId;
+  // A subagent file repeats its parent's sessionId, and marks every line as a sidechain.
+  if (o.sessionId && !st.sub) s.id = o.sessionId;
+  const side = Boolean(o.isSidechain) && !st.sub;
 
-  if (o.type === 'system' && o.subtype === 'compact_boundary') {
+  // /rename wins over the generated title; both win over the first prompt.
+  if ((o.type === 'custom-title' || o.type === 'ai-title') && !st.sub) {
+    const title = o.customTitle ?? o.aiTitle ?? o.title;
+    if (typeof title === 'string' && title.trim() && (o.type === 'custom-title' || !st.customTitle)) {
+      s.title = firstLine(title);
+      st.customTitle ||= o.type === 'custom-title';
+    }
+    return;
+  }
+
+  if (o.type === 'system' && (o.subtype === 'compact_boundary' || o.compactMetadata)) {
     s.compactions++;
     st.sawBoundary = true;
     st.justCompacted = true;
@@ -65,7 +84,7 @@ export function feedClaude(s: Session, st: ClaudeState, o: any): void {
       for (const b of content) {
         if (b?.type === 'tool_result') {
           const tokens = estTokens(textSize(b.content));
-          if (tokens >= BIG_OUTPUT_TOKENS && !o.isSidechain) {
+          if (tokens >= BIG_OUTPUT_TOKENS && !side) {
             const t = st.tools.get(b.tool_use_id);
             s.bigOutputs.push({ name: t?.name ?? 'tool', tokens, what: t?.what });
           }
@@ -75,9 +94,9 @@ export function feedClaude(s: Session, st: ClaudeState, o: any): void {
         }
       }
     }
-    if (promptChars > 0 && !o.isMeta && !o.isSidechain && !promptText.startsWith('<')) {
+    if (promptChars > 0 && !o.isMeta && !side && !promptText.startsWith('<')) {
       s.turns++;
-      s.title ??= firstLine(promptText);
+      if (!st.sub) s.title ??= firstLine(promptText);
       if (promptChars >= BIG_PROMPT_CHARS) s.bigPrompts++;
     }
     return;
@@ -91,19 +110,24 @@ export function feedClaude(s: Session, st: ClaudeState, o: any): void {
       s.toolCalls++;
       if (b.id) st.tools.set(b.id, { name: b.name ?? 'tool', what: target(b.input) });
       const p = b.name === 'Read' ? b.input?.file_path : undefined;
-      if (typeof p === 'string' && !o.isSidechain) s.repeats[p] = (s.repeats[p] ?? 0) + 1;
+      if (typeof p === 'string' && !side) s.repeats[p] = (s.repeats[p] ?? 0) + 1;
     }
   }
 
   const u = msg.usage;
-  if (!u || msg.model === '<synthetic>') return;
-  // One API response is written as several lines (one per content block) with the same usage.
-  if (msg.id && msg.id === st.lastMsgId) return;
-  st.lastMsgId = msg.id;
+  // Locally generated messages ("<synthetic>") are not API responses.
+  if (!u || (typeof msg.model === 'string' && msg.model.startsWith('<'))) return;
+  const key = msg.id ?? o.requestId ?? o.uuid;
+  if (key) {
+    if (st.seen.has(key) || st.parentSeen?.has(key)) return;
+    st.seen.add(key);
+  }
 
   const fresh = u.input_tokens ?? 0;
   const read = u.cache_read_input_tokens ?? 0;
-  const write = u.cache_creation_input_tokens ?? 0;
+  // Cache writes come as one number or split by lifetime.
+  const write = u.cache_creation_input_tokens
+    ?? Object.values(u.cache_creation ?? {}).reduce((n: number, v) => n + (typeof v === 'number' ? v : 0), 0);
   const out = u.output_tokens ?? 0;
   s.input += fresh;
   s.cacheRead += read;
@@ -112,7 +136,7 @@ export function feedClaude(s: Session, st: ClaudeState, o: any): void {
   s.requests++;
 
   // Subagent turns cost tokens but live in their own context window.
-  if (o.isSidechain) return;
+  if (side) return;
 
   if (msg.model) s.model = msg.model;
   const prompt = fresh + read + write;

@@ -15,6 +15,15 @@ export interface MonitorOptions {
   codexContextWindow?: number;
 }
 
+interface Candidate {
+  tool: Tool;
+  file: string;
+  /** For a Claude Code subagent log: the main conversation's file. */
+  parentFile?: string;
+  mtime: number;
+  size: number;
+}
+
 interface Tracked {
   session: Session;
   state: ClaudeState | CodexState;
@@ -44,15 +53,21 @@ export class Monitor {
     this.opts = opts;
   }
 
-  private async candidates(): Promise<{ tool: Tool; file: string; mtime: number; size: number }[]> {
-    const found: { tool: Tool; file: string }[] = [];
+  private async candidates(): Promise<Candidate[]> {
+    const found: Omit<Candidate, 'mtime' | 'size'>[] = [];
     const projects = path.join(this.opts.claudeDir || defaultClaudeDir(), 'projects');
     for (const proj of await ls(projects)) {
       if (!proj.isDirectory()) continue;
-      // Only top-level files: subagent transcripts live in nested folders.
+      // <session>.jsonl is a conversation; <session>/subagents/<agent>.jsonl are its subagents.
       for (const f of await ls(path.join(projects, proj.name))) {
-        if (f.isFile() && f.name.endsWith('.jsonl')) {
-          found.push({ tool: 'claude', file: path.join(projects, proj.name, f.name) });
+        if (!f.isFile() || !f.name.endsWith('.jsonl')) continue;
+        const file = path.join(projects, proj.name, f.name);
+        found.push({ tool: 'claude', file });
+        const subs = path.join(file.slice(0, -'.jsonl'.length), 'subagents');
+        for (const a of await ls(subs)) {
+          if (a.isFile() && a.name.endsWith('.jsonl')) {
+            found.push({ tool: 'claude', file: path.join(subs, a.name), parentFile: file });
+          }
         }
       }
     }
@@ -68,28 +83,34 @@ export class Monitor {
     await walk(path.join(this.opts.codexDir || defaultCodexDir(), 'sessions'), 0);
 
     const cutoff = Date.now() - this.opts.maxAgeMs;
-    const out: { tool: Tool; file: string; mtime: number; size: number }[] = [];
+    const out: Candidate[] = [];
     for (const c of found) {
       try {
         const st = await fs.promises.stat(c.file);
         if (st.mtimeMs >= cutoff) out.push({ ...c, mtime: st.mtimeMs, size: st.size });
       } catch { /* file vanished */ }
     }
-    out.sort((a, b) => b.mtime - a.mtime);
     // Subagent logs are files too, so read well past the number of conversations shown.
-    return out.slice(0, this.opts.maxSessions * 8);
+    out.sort((a, b) => b.mtime - a.mtime);
+    const picked = out.slice(0, this.opts.maxSessions * 8);
+    // A conversation is always read before its own subagents.
+    picked.sort((a, b) => Number(Boolean(a.parentFile)) - Number(Boolean(b.parentFile)));
+    return picked;
+  }
+
+  /** What the sidecar <agent>.meta.json says the subagent is. */
+  private async agentName(file: string): Promise<string> {
+    const fallback = path.basename(file, '.jsonl');
+    try {
+      const meta = JSON.parse(await fs.promises.readFile(file.replace(/\.jsonl$/, '.meta.json'), 'utf8'));
+      const parts = [meta.agentType, meta.description].filter((v) => typeof v === 'string' && v.trim());
+      return parts.length ? parts.join(': ') : fallback;
+    } catch {
+      return fallback;
+    }
   }
 
   private async tail(t: Tracked, tool: Tool, file: string, size: number): Promise<void> {
-    if (size < t.offset) {
-      // File was rewritten: start over.
-      const id = path.basename(file, '.jsonl');
-      t.session = newSession(tool, file, id);
-      t.state = tool === 'claude' ? newClaudeState() : newCodexState();
-      t.offset = 0;
-      t.rest = '';
-      t.decoder = new StringDecoder('utf8');
-    }
     if (size === t.offset) return;
     const fh = await fs.promises.open(file, 'r');
     try {
@@ -125,12 +146,28 @@ export class Monitor {
       if (!t) {
         t = {
           session: newSession(c.tool, c.file, path.basename(c.file, '.jsonl')),
-          state: c.tool === 'claude' ? newClaudeState() : newCodexState(),
+          state: c.tool === 'claude' ? newClaudeState(Boolean(c.parentFile)) : newCodexState(),
           offset: 0, rest: '', decoder: new StringDecoder('utf8'),
         };
         this.tracked.set(c.file, t);
       }
+      if (c.size < t.offset) {
+        // The file was rewritten: start over.
+        t.session = newSession(c.tool, c.file, path.basename(c.file, '.jsonl'));
+        t.state = c.tool === 'claude' ? newClaudeState(Boolean(c.parentFile)) : newCodexState();
+        t.offset = 0;
+        t.rest = '';
+        t.decoder = new StringDecoder('utf8');
+      }
       try {
+        if (c.parentFile) {
+          const parent = this.tracked.get(c.parentFile);
+          // Read after the parent, so turns it already counted are not counted twice.
+          (t.state as ClaudeState).parentSeen = (parent?.state as ClaudeState | undefined)?.seen;
+          t.session.parentId = parent?.session.id ?? path.basename(c.parentFile, '.jsonl');
+          t.session.cwd ??= parent?.session.cwd;
+          t.session.agent ??= await this.agentName(c.file);
+        }
         await this.tail(t, c.tool, c.file, c.size);
       } catch { continue; }
       const s = t.session;

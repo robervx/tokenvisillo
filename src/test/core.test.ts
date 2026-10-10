@@ -345,3 +345,37 @@ test('anonymized logs keep structure and numbers but no text', () => {
     assert.ok(anon.includes(kept), kept);
   }
 });
+
+test('Claude Code subagents: own context, named from the sidecar, nested, never double counted', async () => {
+  const { monitor, cFile } = setup();
+  const main = claudeFixture();
+  // Newer logs: a generated title, a synthetic message, and cache writes split by lifetime.
+  main.push({ type: 'ai-title', sessionId: 'c1', aiTitle: 'Auth refactor' });
+  main.push({ type: 'assistant', sessionId: 'c1', timestamp: iso(95), message: { id: 'syn', model: '<synthetic>', content: [], usage: { input_tokens: 999, output_tokens: 999 } } });
+  fs.writeFileSync(cFile, jsonl(main));
+  const subs = path.join(path.dirname(cFile), 'c1', 'subagents');
+  const line = (id: string, min: number, usage: object) => ({ ...claudeAssistant(id, min, usage), isSidechain: true, agentId: 'a1' });
+  fs.writeFileSync(path.join(subs, 'agent-a1.jsonl'), jsonl([
+    { ...claudeUser(92, 'Find every caller of login()'), isSidechain: true },
+    line('s1', 92, { input_tokens: 5000, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 100 }), // also in the parent
+    line('s2', 93, { input_tokens: 200, cache_creation: { ephemeral_5m_input_tokens: 3000, ephemeral_1h_input_tokens: 1000 }, cache_read_input_tokens: 5000, output_tokens: 300 }),
+  ]));
+  fs.writeFileSync(path.join(subs, 'agent-a1.meta.json'), JSON.stringify({ agentType: 'Explore', description: 'Find callers' }));
+  fs.rmSync(path.join(subs, 'agent.jsonl'));
+
+  const list = await monitor.refresh();
+  assert.equal(list.length, 1);
+  const s = list[0];
+  assert.equal(s.title, 'Auth refactor');
+  assert.equal(s.requests, 6); // the synthetic message is not a request
+  assert.equal(s.children!.length, 1);
+  const k = s.children![0];
+  assert.equal(k.parentId, 'c1');
+  assert.equal(k.agent, 'Explore: Find callers');
+  assert.equal(k.requests, 1); // s1 was already counted in the parent
+  assert.equal(k.input, 200);
+  assert.equal(k.cacheWrite, 4000);
+  assert.equal(k.contextTokens, 9500); // its sidechain lines are its own context
+  assert.equal(k.cwd, '/work/app');
+  assert.equal(s.contextTokens, 135000); // unchanged by the subagent
+});
