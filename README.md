@@ -74,7 +74,7 @@ To hack on it, open the folder in VS Code and press `F5`.
 - **Context fill is an approximation** of what each tool shows: it is the prompt plus output of the latest request, and does not include the space each tool reserves before auto-compacting.
 - **Tool result sizes are estimated** at 4 characters per token.
 - **Compressed Codex logs (`.jsonl.zst`) are not read.**
-- **How far each parser has been checked.** Codex: against real logs written by Codex 0.107 to 0.153 (VS Code extension and SDK), where token totals match Codex's own per-thread records exactly. Claude Code: against synthetic logs built from the publicly described format (session files, `subagents/` folders with their `.meta.json`, compaction markers, cache writes split by lifetime), not yet against a real log.
+- **How far each parser has been checked.** Codex: against real logs written by Codex 0.107 to 0.153 (VS Code extension and SDK), where token totals match Codex's own per-thread records exactly. Claude Code: against a real 4.8 MB session log, where requests and every token total match exactly; subagent folders and compaction markers only against synthetic logs built from the publicly described format.
 - **Inside VS Code** the extension has been run end to end (activation, status bar, panel, export) in a VS Code 1.112 server, not on every desktop build.
 - **Codex compactions** are read from the `compacted` line Codex writes (confirmed on a real log from Codex 0.153). As a fallback for other versions, a prompt that suddenly halves is also counted as one.
 - The log formats are not a public API and can change between versions. If a number looks wrong, please open an issue with the tool version and an anonymized log (see below).
@@ -145,7 +145,7 @@ code --install-extension tokenvisillo-0.1.0.vsix
 - **El llenado de contexto es una aproximación** de lo que muestra cada herramienta; no incluye el margen que reservan antes de compactar.
 - **El tamaño de los resultados de herramientas se estima** a 4 caracteres por token.
 - **No se leen los registros de Codex comprimidos (`.jsonl.zst`).**
-- **Hasta dónde está comprobado cada lector.** Codex: con registros reales de Codex 0.107 a 0.153, donde los totales coinciden exactamente con los que Codex anota por hilo. Claude Code: con registros sintéticos construidos según el formato descrito públicamente (archivos de sesión, carpetas `subagents/` con su `.meta.json`, marcadores de compactación), todavía no con un registro real.
+- **Hasta dónde está comprobado cada lector.** Codex: con registros reales de Codex 0.107 a 0.153, donde los totales coinciden exactamente con los que Codex anota por hilo. Claude Code: con un registro real de 4,8 MB, donde las peticiones y todos los totales de tokens coinciden exactamente; las carpetas de subagentes y las compactaciones, solo con registros sintéticos construidos según el formato descrito públicamente.
 - **Dentro de VS Code** se ha probado de principio a fin (activación, barra de estado, panel, exportación) en un servidor de VS Code 1.112, no en todas las versiones de escritorio.
 - **Las compactaciones de Codex** se leen de la línea `compacted` que escribe Codex (confirmado con un registro real de Codex 0.153). Como respaldo para otras versiones, también cuenta un prompt que se reduce de golpe a la mitad.
 - Los formatos de registro no son una API pública y pueden cambiar entre versiones.

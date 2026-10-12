@@ -416,3 +416,19 @@ test('Codex subagent: numbered lines mark where its own history starts', async (
   assert.equal(sub.contextTokens, 18100);
   assert.equal(sub.compactions, 0); // the replayed parent compaction is not its own
 });
+
+test('Claude Code prompts wrapped in client blocks still count, and empty responses do not', async () => {
+  const { monitor, cFile } = setup();
+  fs.writeFileSync(cFile, jsonl([
+    claudeUser(0, [{ type: 'text', text: '<system-reminder>\nnotes\n</system-reminder>' }, { type: 'text', text: 'Rename the config loader' }]),
+    claudeUser(1, '<ide_selection>a.ts lines 1-3</ide_selection>\nwhy does this fail?'),
+    claudeUser(2, '<command-name>/clear</command-name>'),
+    claudeAssistant('z', 2, { input_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 0 }),
+    claudeAssistant('m1', 3, { input_tokens: 10, cache_creation_input_tokens: 50000, cache_read_input_tokens: 0, output_tokens: 100 }),
+  ]));
+  const [s] = await monitor.refresh();
+  assert.equal(s.turns, 2);
+  assert.equal(s.title, 'Rename the config loader');
+  assert.equal(s.requests, 1);
+  assert.equal(s.baselineTokens, 50010);
+});

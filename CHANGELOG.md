@@ -11,3 +11,4 @@ First public version.
 - Codex account usage limits (5-hour and weekly) when the log includes them.
 - Export of anonymized logs for bug reports.
 - English and Spanish.
+- Checked against real logs: Codex 0.107 to 0.153, and a Claude Code session.

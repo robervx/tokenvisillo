@@ -18,6 +18,18 @@ export interface ClaudeState {
   tools: Map<string, { name: string; what?: string }>;
 }
 
+/**
+ * What the user typed, without the blocks the client wraps around it
+ * (<system-reminder>, <ide_selection>, …). Command echoes such as <command-name> leave nothing.
+ */
+const LEADING_BLOCK = /^\s*<([\w-]+)[^>]*>[\s\S]*?<\/\1>\s*/;
+function typedText(text: string): string {
+  let t = text;
+  for (let m = LEADING_BLOCK.exec(t); m; m = LEADING_BLOCK.exec(t)) t = t.slice(m[0].length);
+  t = t.trim();
+  return t.startsWith('<') ? '' : t;
+}
+
 /** The argument that best identifies a tool call: the file, command or pattern. */
 function target(input: any): string | undefined {
   const v = input?.file_path ?? input?.command ?? input?.pattern ?? input?.path ?? input?.url ?? input?.query;
@@ -78,8 +90,8 @@ export function feedClaude(s: Session, st: ClaudeState, o: any): void {
     let promptChars = 0;
     let promptText = '';
     if (typeof content === 'string') {
-      promptChars = content.length;
-      promptText = content;
+      promptText = typedText(content);
+      promptChars = promptText.length;
     } else if (Array.isArray(content)) {
       for (const b of content) {
         if (b?.type === 'tool_result') {
@@ -89,12 +101,13 @@ export function feedClaude(s: Session, st: ClaudeState, o: any): void {
             s.bigOutputs.push({ name: t?.name ?? 'tool', tokens, what: t?.what });
           }
         } else if (b?.type === 'text' && typeof b.text === 'string') {
-          promptChars += b.text.length;
-          promptText ||= b.text;
+          const typed = typedText(b.text);
+          promptChars += typed.length;
+          promptText ||= typed;
         }
       }
     }
-    if (promptChars > 0 && !o.isMeta && !side && !promptText.startsWith('<')) {
+    if (promptChars > 0 && !o.isMeta && !side) {
       s.turns++;
       if (!st.sub) s.title ??= firstLine(promptText);
       if (promptChars >= BIG_PROMPT_CHARS) s.bigPrompts++;
@@ -124,6 +137,8 @@ export function feedClaude(s: Session, st: ClaudeState, o: any): void {
   }
 
   const fresh = u.input_tokens ?? 0;
+  // Placeholder responses with no usage at all are not requests.
+  if (!fresh && !u.output_tokens && !u.cache_read_input_tokens && !u.cache_creation_input_tokens) return;
   const read = u.cache_read_input_tokens ?? 0;
   // Cache writes come as one number or split by lifetime.
   const write = u.cache_creation_input_tokens
