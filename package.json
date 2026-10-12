@@ -1,60 +1,176 @@
 {
   "name": "tokenvisillo",
   "displayName": "TokenVisillo",
-  "description": "The nosy neighbour behind the curtain: context meter and token-saving coach for Claude Code and Codex sessions.",
+  "description": "The nosy neighbour behind the curtain: a context meter and token-saving coach for Claude Code and Codex, with advice drawn from your own sessions.",
   "version": "0.1.0",
   "publisher": "tokenvisillo-dev",
   "license": "MIT",
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["Visualization", "Other"],
-  "keywords": ["claude code", "codex", "tokens", "context window", "usage"],
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "claude code",
+    "codex",
+    "tokens",
+    "context window",
+    "token usage",
+    "cache",
+    "subagents",
+    "ai coding",
+    "cursor",
+    "windsurf"
+  ],
   "main": "./out/extension.js",
-  "activationEvents": ["onStartupFinished"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    },
+    "virtualWorkspaces": false
+  },
   "contributes": {
     "viewsContainers": {
       "activitybar": [
-        { "id": "tokenvisillo", "title": "TokenVisillo", "icon": "media/icon.svg" }
+        {
+          "id": "tokenvisillo",
+          "title": "TokenVisillo",
+          "icon": "media/icon.svg"
+        }
       ]
     },
     "views": {
       "tokenvisillo": [
-        { "type": "webview", "id": "tokenvisillo.sessions", "name": "Conversations" }
+        {
+          "type": "webview",
+          "id": "tokenvisillo.sessions",
+          "name": "Conversations"
+        }
       ]
     },
     "commands": [
-      { "command": "tokenvisillo.refresh", "title": "TokenVisillo: Refresh", "icon": "$(refresh)" },
-      { "command": "tokenvisillo.toggleScope", "title": "TokenVisillo: Toggle workspace / all conversations", "icon": "$(filter)" },
-      { "command": "tokenvisillo.openPanel", "title": "TokenVisillo: Open panel" },
-      { "command": "tokenvisillo.exportAnonymized", "title": "TokenVisillo: Export anonymized logs (for bug reports)", "icon": "$(export)" }
+      {
+        "command": "tokenvisillo.refresh",
+        "title": "TokenVisillo: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "tokenvisillo.toggleScope",
+        "title": "TokenVisillo: Toggle workspace / all conversations",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "tokenvisillo.openPanel",
+        "title": "TokenVisillo: Open panel"
+      },
+      {
+        "command": "tokenvisillo.exportAnonymized",
+        "title": "TokenVisillo: Export anonymized logs (for bug reports)",
+        "icon": "$(export)"
+      }
     ],
     "menus": {
       "view/title": [
-        { "command": "tokenvisillo.refresh", "when": "view == tokenvisillo.sessions", "group": "navigation" },
-        { "command": "tokenvisillo.toggleScope", "when": "view == tokenvisillo.sessions", "group": "navigation" },
-        { "command": "tokenvisillo.exportAnonymized", "when": "view == tokenvisillo.sessions", "group": "navigation" }
+        {
+          "command": "tokenvisillo.refresh",
+          "when": "view == tokenvisillo.sessions",
+          "group": "navigation"
+        },
+        {
+          "command": "tokenvisillo.toggleScope",
+          "when": "view == tokenvisillo.sessions",
+          "group": "navigation"
+        },
+        {
+          "command": "tokenvisillo.exportAnonymized",
+          "when": "view == tokenvisillo.sessions",
+          "group": "navigation"
+        }
       ]
     },
     "configuration": {
       "title": "TokenVisillo",
       "properties": {
         "tokenvisillo.language": {
-          "type": "string", "enum": ["auto", "en", "es"], "default": "auto",
+          "type": "string",
+          "enum": [
+            "auto",
+            "en",
+            "es"
+          ],
+          "default": "auto",
           "description": "Language for the panel and the advice."
         },
         "tokenvisillo.scope": {
-          "type": "string", "enum": ["workspace", "all"], "default": "workspace",
+          "type": "string",
+          "enum": [
+            "workspace",
+            "all"
+          ],
+          "default": "workspace",
           "description": "Show only conversations started in the open workspace, or all recent ones."
         },
-        "tokenvisillo.warnPercent": { "type": "number", "default": 60, "description": "Context fill (%) at which the light turns yellow." },
-        "tokenvisillo.criticalPercent": { "type": "number", "default": 85, "description": "Context fill (%) at which the light turns red." },
-        "tokenvisillo.notify": { "type": "boolean", "default": true, "description": "Show a notification when a conversation crosses the critical threshold." },
-        "tokenvisillo.pollSeconds": { "type": "number", "default": 3, "minimum": 1, "description": "How often session logs are re-read." },
-        "tokenvisillo.maxAgeHours": { "type": "number", "default": 48, "description": "Ignore conversations not updated within this many hours." },
-        "tokenvisillo.maxSessions": { "type": "number", "default": 12, "description": "Maximum number of conversations shown." },
-        "tokenvisillo.claudeDir": { "type": "string", "default": "", "description": "Claude Code config folder. Empty = $CLAUDE_CONFIG_DIR or ~/.claude." },
-        "tokenvisillo.codexDir": { "type": "string", "default": "", "description": "Codex home folder. Empty = $CODEX_HOME or ~/.codex." },
-        "tokenvisillo.claudeContextWindow": { "type": "number", "default": 0, "description": "Claude context window in tokens. 0 = auto (200k, or 1M when a session exceeds 200k)." },
-        "tokenvisillo.codexContextWindow": { "type": "number", "default": 0, "description": "Codex context window in tokens. 0 = use the value Codex writes in its log." }
+        "tokenvisillo.warnPercent": {
+          "type": "number",
+          "default": 60,
+          "description": "Context fill (%) at which the light turns yellow."
+        },
+        "tokenvisillo.criticalPercent": {
+          "type": "number",
+          "default": 85,
+          "description": "Context fill (%) at which the light turns red."
+        },
+        "tokenvisillo.notify": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a notification when a conversation crosses the critical threshold."
+        },
+        "tokenvisillo.pollSeconds": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "description": "How often session logs are re-read."
+        },
+        "tokenvisillo.maxAgeHours": {
+          "type": "number",
+          "default": 48,
+          "description": "Ignore conversations not updated within this many hours."
+        },
+        "tokenvisillo.maxSessions": {
+          "type": "number",
+          "default": 12,
+          "description": "Maximum number of conversations shown."
+        },
+        "tokenvisillo.claudeDir": {
+          "type": "string",
+          "default": "",
+          "description": "Claude Code config folder. Empty = $CLAUDE_CONFIG_DIR or ~/.claude."
+        },
+        "tokenvisillo.codexDir": {
+          "type": "string",
+          "default": "",
+          "description": "Codex home folder. Empty = $CODEX_HOME or ~/.codex."
+        },
+        "tokenvisillo.claudeContextWindow": {
+          "type": "number",
+          "default": 0,
+          "description": "Claude context window in tokens. 0 = auto (200k, or 1M when a session exceeds 200k)."
+        },
+        "tokenvisillo.codexContextWindow": {
+          "type": "number",
+          "default": 0,
+          "description": "Codex context window in tokens. 0 = use the value Codex writes in its log."
+        }
       }
     }
   },

@@ -379,3 +379,40 @@ test('Claude Code subagents: own context, named from the sidecar, nested, never 
   assert.equal(k.cwd, '/work/app');
   assert.equal(s.contextTokens, 135000); // unchanged by the subagent
 });
+
+test('a log rewritten in place is re-read, even when it grows', async () => {
+  const { monitor, xFile } = setup();
+  const rows = codexFixture();
+  fs.writeFileSync(xFile, jsonl(rows));
+  let [s] = await monitor.refresh();
+  assert.equal(s.requests, 2);
+  // Codex migrates old logs: same conversation, an extra field on every line, one duplicate dropped.
+  const migrated = rows.map((r: any, i) => ({ ordinal: i, ...r }));
+  fs.writeFileSync(xFile, jsonl(migrated));
+  [s] = await monitor.refresh();
+  assert.equal(s.requests, 2);
+  assert.equal(s.input, 205000);
+  assert.equal(s.compactions, 1);
+  assert.equal(s.toolCalls, 4);
+});
+
+test('Codex subagent: numbered lines mark where its own history starts', async () => {
+  const { monitor, xFile } = setup();
+  fs.writeFileSync(xFile, jsonl(codexFixture()));
+  const at = (ms: number) => new Date(Date.UTC(2026, 9, 10, 8, 30, 0, ms)).toISOString();
+  const tc = (ms: number, total: U, last: U) => ({ ...codexToken(0, total, last), timestamp: at(ms) });
+  // Replayed lines are stamped seconds apart here, so only the line numbers can tell them apart.
+  const rows: any[] = [
+    { timestamp: at(0), type: 'session_meta', payload: { id: 'sub2', cwd: '/work/api', parent_thread_id: 'x1', forked_from_id: 'x1', subagent_history_start_ordinal: 3 } },
+    { timestamp: at(0), type: 'compacted', payload: {} },
+    tc(4000, usage(2_000_000, 1_900_000, 9000), usage(120000, 118000, 800)),
+    tc(9000, usage(2_018_000, 1_900_000, 9100), usage(18000, 0, 100)),
+  ].map((r, i) => ({ ordinal: i, ...r }));
+  fs.writeFileSync(path.join(path.dirname(xFile), 'rollout-2026-10-10T08-30-00-sub2.jsonl'), jsonl(rows));
+  const [parent] = await monitor.refresh();
+  const sub = parent.children![0];
+  assert.equal(sub.id, 'sub2');
+  assert.equal(sub.requests, 1);
+  assert.equal(sub.contextTokens, 18100);
+  assert.equal(sub.compactions, 0); // the replayed parent compaction is not its own
+});

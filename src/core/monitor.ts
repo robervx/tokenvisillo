@@ -30,7 +30,12 @@ interface Tracked {
   offset: number;
   rest: string;
   decoder: StringDecoder;
+  /** The last bytes read, to notice a file rewritten in place rather than appended to. */
+  tailSig?: Buffer;
 }
+
+const SIG_BYTES = 64;
+const FULL_SCAN_MS = 30_000;
 
 export const defaultClaudeDir = () => process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
 export const defaultCodexDir = () => process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
@@ -51,18 +56,27 @@ export class Monitor {
 
   setOptions(opts: MonitorOptions): void {
     this.opts = opts;
+    this.lastFullScan = 0;
   }
 
-  private async candidates(): Promise<Candidate[]> {
+  private known = new Map<string, Omit<Candidate, 'mtime' | 'size'>>();
+  private recent: Omit<Candidate, 'mtime' | 'size'>[] = [];
+  private lastFullScan = 0;
+
+  /** Every session log on disk, without reading or stat-ing any of them. */
+  private async list(): Promise<Omit<Candidate, 'mtime' | 'size'>[]> {
     const found: Omit<Candidate, 'mtime' | 'size'>[] = [];
     const projects = path.join(this.opts.claudeDir || defaultClaudeDir(), 'projects');
     for (const proj of await ls(projects)) {
       if (!proj.isDirectory()) continue;
       // <session>.jsonl is a conversation; <session>/subagents/<agent>.jsonl are its subagents.
-      for (const f of await ls(path.join(projects, proj.name))) {
+      const entries = await ls(path.join(projects, proj.name));
+      const dirs = new Set(entries.filter((e) => e.isDirectory()).map((e) => e.name));
+      for (const f of entries) {
         if (!f.isFile() || !f.name.endsWith('.jsonl')) continue;
         const file = path.join(projects, proj.name, f.name);
         found.push({ tool: 'claude', file });
+        if (!dirs.has(f.name.slice(0, -'.jsonl'.length))) continue;
         const subs = path.join(file.slice(0, -'.jsonl'.length), 'subagents');
         for (const a of await ls(subs)) {
           if (a.isFile() && a.name.endsWith('.jsonl')) {
@@ -81,6 +95,25 @@ export class Monitor {
       }
     };
     await walk(path.join(this.opts.codexDir || defaultCodexDir(), 'sessions'), 0);
+    return found;
+  }
+
+  /**
+   * Recent logs, newest first. Every file is stat-ed only on a full scan (every 30 s, which also
+   * catches an old conversation that was resumed); in between, only the recent ones and new files are.
+   */
+  private async candidates(): Promise<Candidate[]> {
+    const all = await this.list();
+    let found: Omit<Candidate, 'mtime' | 'size'>[];
+    if (Date.now() - this.lastFullScan >= FULL_SCAN_MS) {
+      this.lastFullScan = Date.now();
+      this.known = new Map(all.map((c) => [c.file, c]));
+      found = all;
+    } else {
+      const fresh = all.filter((c) => !this.known.has(c.file));
+      for (const c of fresh) this.known.set(c.file, c);
+      found = [...this.recent, ...fresh];
+    }
 
     const cutoff = Date.now() - this.opts.maxAgeMs;
     const out: Candidate[] = [];
@@ -93,6 +126,7 @@ export class Monitor {
     // Subagent logs are files too, so read well past the number of conversations shown.
     out.sort((a, b) => b.mtime - a.mtime);
     const picked = out.slice(0, this.opts.maxSessions * 8);
+    this.recent = picked.map(({ tool, file, parentFile }) => ({ tool, file, parentFile }));
     // A conversation is always read before its own subagents.
     picked.sort((a, b) => Number(Boolean(a.parentFile)) - Number(Boolean(b.parentFile)));
     return picked;
@@ -110,6 +144,20 @@ export class Monitor {
     }
   }
 
+  /** True when the bytes just before the read offset are still the ones read last time. */
+  private async sameTail(t: Tracked, file: string): Promise<boolean> {
+    if (!t.tailSig || t.offset === 0) return true;
+    const fh = await fs.promises.open(file, 'r');
+    try {
+      const n = t.tailSig.length;
+      const buf = Buffer.alloc(n);
+      const { bytesRead } = await fh.read(buf, 0, n, t.offset - n);
+      return bytesRead === n && buf.equals(t.tailSig);
+    } finally {
+      await fh.close();
+    }
+  }
+
   private async tail(t: Tracked, tool: Tool, file: string, size: number): Promise<void> {
     if (size === t.offset) return;
     const fh = await fs.promises.open(file, 'r');
@@ -119,6 +167,7 @@ export class Monitor {
         const { bytesRead } = await fh.read(buf, 0, Math.min(buf.length, size - t.offset), t.offset);
         if (bytesRead === 0) break;
         t.offset += bytesRead;
+        t.tailSig = Buffer.from(buf.subarray(Math.max(0, bytesRead - SIG_BYTES), bytesRead));
         const lines = (t.rest + t.decoder.write(buf.subarray(0, bytesRead))).split('\n');
         t.rest = lines.pop() ?? '';
         for (const line of lines) {
@@ -151,13 +200,14 @@ export class Monitor {
         };
         this.tracked.set(c.file, t);
       }
-      if (c.size < t.offset) {
-        // The file was rewritten: start over.
+      if (c.size < t.offset || (c.size > t.offset && !(await this.sameTail(t, c.file)))) {
+        // The file was rewritten (Codex migrates old logs in place, sometimes making them larger): start over.
         t.session = newSession(c.tool, c.file, path.basename(c.file, '.jsonl'));
         t.state = c.tool === 'claude' ? newClaudeState(Boolean(c.parentFile)) : newCodexState();
         t.offset = 0;
         t.rest = '';
         t.decoder = new StringDecoder('utf8');
+        t.tailSig = undefined;
       }
       try {
         if (c.parentFile) {

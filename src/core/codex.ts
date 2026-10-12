@@ -10,6 +10,8 @@ export interface CodexState {
   /** Forked subagent logs start with a replay of the parent's history. */
   forked: boolean;
   replayDone: boolean;
+  /** Newer logs number their lines; lines before this ordinal are the replayed parent history. */
+  ownFrom?: number;
   hasRecords: boolean;
   records: number;
   lastTotal: number;
@@ -41,6 +43,8 @@ const IDE_CONTEXT = '# Context from my IDE';
 const IDE_REQUEST = /^## My request[^\n]*:[ \t]*$/m;
 
 function compaction(s: Session, st: CodexState): void {
+  // A marker before this conversation's first request is inherited history, not its own compaction.
+  if (s.requests === 0) return;
   // A compaction may be logged both as an item and as an event.
   if (!st.compactCounted) s.compactions++;
   st.compactCounted = true;
@@ -100,6 +104,7 @@ function meta(s: Session, st: CodexState, m: any): void {
   const parent = m.parent_thread_id || m.forked_from_id;
   if (parent) s.parentId = parent;
   st.forked = Boolean(m.forked_from_id);
+  if (st.forked && typeof m.subagent_history_start_ordinal === 'number') st.ownFrom = m.subagent_history_start_ordinal;
   const sub = m.source?.subagent;
   const spawn = sub?.thread_spawn;
   const name = typeof spawn?.agent_path === 'string' ? spawn.agent_path.split('/').pop() : sub?.other;
@@ -119,7 +124,8 @@ export function feedCodex(s: Session, st: CodexState, o: any): void {
     s.startedAt ??= ts;
     s.updatedAt = ts;
     st.firstTs ??= ts;
-    if (ts - st.firstTs > REPLAY_WINDOW_MS) st.replayDone = true;
+    // Without line numbers, the replay is recognized by its timestamps: it is all written at the fork instant.
+    if (st.ownFrom === undefined && ts - st.firstTs > REPLAY_WINDOW_MS) st.replayDone = true;
   }
   const p = o.payload ?? {};
 
@@ -144,6 +150,7 @@ export function feedCodex(s: Session, st: CodexState, o: any): void {
     return;
   }
 
+  if (st.ownFrom !== undefined && typeof o.ordinal === 'number' && o.ordinal >= st.ownFrom) st.replayDone = true;
   const replay = st.forked && !st.replayDone;
 
   if (o.type === 'event_msg' && p.type === 'token_count') {
@@ -205,6 +212,7 @@ export function feedCodex(s: Session, st: CodexState, o: any): void {
 
   if (replay) return;
   if (o.type === 'compacted') return compaction(s, st);
+  if (o.type === 'response_item' && p.type === 'compaction') return compaction(s, st);
 
   if (o.type === 'event_msg') {
     if (p.type === 'context_compacted') return compaction(s, st);
