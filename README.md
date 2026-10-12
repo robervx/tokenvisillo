@@ -5,6 +5,8 @@ One panel, one set of rules, whichever of the two you are using.
 
 [Español más abajo](#español)
 
+<p align="center"><img src="docs/panel.png" width="340" alt="TokenVisillo panel in VS Code"></p>
+
 > **Why the name?** A *visillo* is a net curtain. In Spain, *la vieja del visillo* is the neighbour who peeks from behind it and knows everything that happens on the street. This one only spies on your tokens.
 
 ## What it does
@@ -44,10 +46,10 @@ Files are read incrementally: only what was appended since the last check is par
 
 ## Install
 
-Not on the Marketplace yet. Build the `.vsix` and install it:
+Search for **TokenVisillo** in the Extensions view, or build the `.vsix` yourself:
 
 ```bash
-git clone <this repo> && cd tokenvisillo
+git clone https://github.com/robervx/tokenvisillo && cd tokenvisillo
 npm install
 npm run package
 code --install-extension tokenvisillo-0.1.0.vsix
@@ -130,10 +132,10 @@ La nota parte de 100 y pierde 25 / 12 / 5 puntos por cada consejo crítico / avi
 
 ### Instalación
 
-Todavía no está en el Marketplace:
+Busca **TokenVisillo** en Extensiones, o genera tú el `.vsix`:
 
 ```bash
-git clone <este repo> && cd tokenvisillo
+git clone https://github.com/robervx/tokenvisillo && cd tokenvisillo
 npm install
 npm run package
 code --install-extension tokenvisillo-0.1.0.vsix

@@ -3,13 +3,24 @@
   "displayName": "TokenVisillo",
   "description": "The nosy neighbour behind the curtain: a context meter and token-saving coach for Claude Code and Codex, with advice drawn from your own sessions.",
   "version": "0.1.0",
-  "publisher": "tokenvisillo-dev",
+  "publisher": "robervx",
+  "author": {
+    "name": "Rober"
+  },
   "license": "MIT",
   "icon": "media/icon.png",
   "galleryBanner": {
     "color": "#1e1e1e",
     "theme": "dark"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/robervx/tokenvisillo.git"
+  },
+  "bugs": {
+    "url": "https://github.com/robervx/tokenvisillo/issues"
+  },
+  "homepage": "https://github.com/robervx/tokenvisillo#readme",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -178,7 +189,7 @@
     "compile": "tsc -p .",
     "watch": "tsc -w -p .",
     "test": "npm run compile && node --test out/test/core.test.js",
-    "package": "vsce package --allow-missing-repository",
+    "package": "vsce package",
     "vscode:prepublish": "npm run compile"
   },
   "devDependencies": {
