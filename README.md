@@ -5,7 +5,7 @@ One panel, one set of rules, whichever of the two you are using.
 
 [Español más abajo](#español)
 
-<p align="center"><img src="docs/panel.png" width="340" alt="TokenVisillo panel in VS Code"></p>
+<p align="center"><img src="docs/demo.gif" width="780" alt="TokenVisillo: the light turns from green to red as a Claude Code conversation fills up, with advice drawn from what happened"></p>
 
 > **Why the name?** A *visillo* is a net curtain. In Spain, *la vieja del visillo* is the neighbour who peeks from behind it and knows everything that happens on the street. This one only spies on your tokens.
 
